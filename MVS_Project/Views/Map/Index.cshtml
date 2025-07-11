@@ -1,0 +1,157 @@
+﻿@{
+    ViewData["Title"] = "Live Car Tracker";
+}
+
+<div id="map" style="height: 80vh;"></div>
+
+@section Scripts {
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/9.0.1/signalr.min.js"></script>
+
+    <script>
+        // Afghanistan boundaries
+        const afgBounds = L.latLngBounds(
+            L.latLng(29.3772, 60.5042), // SW corner
+            L.latLng(38.4911, 74.9157)  // NE corner
+        );
+
+        // Initialize map with constraints
+        const map = L.map('map', {
+            center: [33.93911, 67.709953],
+            zoom: 6,
+            maxBounds: afgBounds,
+            maxBoundsViscosity: 1.0
+        });
+
+        // Add tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Car markers and metadata
+        const cars = new Map();
+
+        // Fetch initial car positions
+        fetch('/Map/GetActiveCars')
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                data.forEach(car => {
+                    const pos = car.lastPosition;
+                    if (pos) {
+                        addOrUpdateCar(car.id, pos.latitude, pos.longitude, car);
+                    }
+                });
+                setupSignalR();
+            })
+            .catch(error => {
+                console.error('Error fetching car data:', error);
+            });
+
+        function addOrUpdateCar(id, lat, lng, metadata) {
+            let carData = cars.get(id);
+            const newLatLng = L.latLng(lat, lng);
+
+            if (!carData) {
+                // Create new marker
+                const marker = L.marker(newLatLng, {
+                    icon: L.divIcon({
+                        className: 'car-marker',
+                        html: '<div style="font-size:24px; color:blue">🚗</div>',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map);
+
+                // Add popup with info
+                const popupContent = `
+                    <b>${metadata.licensePlate}</b><br>
+                    ${metadata.make} ${metadata.model}<br>
+                    Last update: ${new Date().toLocaleTimeString()}
+                `;
+                marker.bindPopup(popupContent);
+
+                cars.set(id, {
+                    marker,
+                    metadata,
+                    prevLatLng: newLatLng  // Store initial position
+                });
+            } else {
+                // Update existing marker
+                const { marker, prevLatLng } = carData;
+
+                // Calculate rotation angle
+                let angle = 0;
+                if (prevLatLng) {
+                    angle = Math.atan2(
+                        lng - prevLatLng.lng,
+                        lat - prevLatLng.lat
+                    ) * 180 / Math.PI;
+                }
+
+                // Apply rotation to the icon
+                const iconElement = marker.getElement();
+                if (iconElement) {
+                    iconElement.style.transform = `rotate(${angle}deg)`;
+                    iconElement.style.transition = 'transform 0.5s ease';
+                }
+
+                // Update position
+                marker.setLatLng(newLatLng);
+
+                // Update popup
+                marker.getPopup().setContent(`
+                    <b>${metadata.licensePlate}</b><br>
+                    ${metadata.make} ${metadata.model}<br>
+                    Last update: ${new Date().toLocaleTimeString()}<br>
+                    Position: ${lat.toFixed(5)}, ${lng.toFixed(5)}
+                `);
+
+                // Update stored data with new position
+                cars.set(id, {
+                    marker,
+                    metadata,
+                    prevLatLng: newLatLng
+                });
+            }
+        }
+
+        function setupSignalR() {
+            const connection = new signalR.HubConnectionBuilder()
+                .withUrl("/trackingHub")
+                .configureLogging(signalR.LogLevel.Information)
+                .build();
+
+            connection.on("ReceiveCarUpdate", (carId, lat, lng) => {
+                const carData = cars.get(carId);
+                if (carData) {
+                    addOrUpdateCar(carId, lat, lng, carData.metadata);
+                } else {
+                    console.warn(`Received update for unknown car ID: ${carId}`);
+                    // Fetch car metadata if we don't have it
+                    fetch(`/Map/GetCar/${carId}`)
+                        .then(response => response.json())
+                        .then(car => {
+                            addOrUpdateCar(carId, lat, lng, car);
+                        });
+                }
+            });
+
+            connection.start()
+                .then(() => {
+                    console.log("SignalR connected");
+                    // Subscribe to all active cars
+                    const carIds = Array.from(cars.keys());
+                    if (carIds.length > 0) {
+                        connection.invoke("SubscribeToCars", carIds)
+                            .catch(err => console.error('Subscribe error:', err));
+                    }
+                })
+                .catch(err => console.error('SignalR connection error:', err));
+        }
+    </script>
+}
