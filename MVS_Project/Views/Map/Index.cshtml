@@ -3,6 +3,11 @@
 }
 
 <div id="map" style="height: 80vh;"></div>
+<div>
+    <input id="origin" type="text" placeholder="Your Location"/>
+    <input id="destination" type="text" placeholder="destaination"/>
+    <button onclick="getRoute()">Get Route</button>
+</div>
 
 @section Scripts {
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -25,9 +30,9 @@
         });
 
         // Add tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-        }).addTo(map);
+       L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+         attribution: 'Tiles © Esri'
+            }).addTo(map);
 
         // Car markers and metadata
         const cars = new Map();
@@ -152,6 +157,67 @@
                     }
                 })
                 .catch(err => console.error('SignalR connection error:', err));
+        }
+
+        let routeLine
+
+        async function getRoute ()
+        {
+            const origin = document.getElementById("origin").value;
+            const destination = document.getElementById("destination").value;
+
+            if (!origin || !destination)
+            {
+                alert("please enter both field");
+                return;
+            }
+
+            const apiKey = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YzU1OGVlODQyNzQ5Yzc4MmE3MDc3ZjcwZGYyMzMyIiwiaCI6Im11cm11cjY0In0='
+
+            // geocode origin
+
+            const fromGeo = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(origin)}`)
+                .then(res => res.json());
+
+            const toGeo = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${apiKey}&text=${encodeURIComponent(destination)}`)
+                .then(res => res.json());
+            
+            const fromCoord = fromGeo.features[0].geometry.coordinates;
+            const toCoord = toGeo.features[0].geometry.coordinates;
+
+            //get route between coordinates
+
+            const body = 
+            {
+                coordinates: [fromCoord,toCoord]
+            };
+
+            const route = await fetch('https://api.openrouteservice.org/v2/directions/driving-car/geojson', {
+                method: 'POST',
+                headers: {
+                    'Authorization': apiKey,
+                    'Content-Type': 'application/json'
+            },
+             body: JSON.stringify(body)
+            }).then(res => res.json());
+
+            // Remove old route if exists
+            if (routeLine) 
+            {
+            map.removeLayer(routeLine);
+            }
+
+            // Draw new polyline
+            routeLine = L.geoJSON(route, 
+            {
+                style: {
+                    color: 'blue',
+                    weight: 4
+            }
+            }).addTo(map);
+
+             // Fit map to route
+            map.fitBounds(routeLine.getBounds());
         }
     </script>
 }
