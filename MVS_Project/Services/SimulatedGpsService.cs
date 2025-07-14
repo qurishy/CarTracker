@@ -5,7 +5,7 @@ using MVS_Project.Models;
 
 namespace MVS_Project.Services
 {
-    public class SimulatedGpsService : IGpsDataService, IHostedService
+    public class SimulatedGpsService : IHostedService
     {
         private readonly IServiceProvider _services;
         private Timer? _timer;
@@ -18,7 +18,7 @@ namespace MVS_Project.Services
 
         public Task StartAsync(CancellationToken cancellationToken)
         {
-            _timer = new Timer(UpdatePositions, null, 0, 5000); // Every 5s
+            _timer = new Timer(UpdatePositions, null, 0, 3000); // Every 3 seconds
             return Task.CompletedTask;
         }
 
@@ -56,6 +56,7 @@ namespace MVS_Project.Services
         public async Task<IEnumerable<CarPosition>> GetLatestPositionsAsync(string countryCode)
         {
             // Afghanistan bounding box coordinates
+            // Backend (SimulatedGpsService.cs)
             const double minLat = 29.3772;
             const double maxLat = 38.4911;
             const double minLng = 60.5042;

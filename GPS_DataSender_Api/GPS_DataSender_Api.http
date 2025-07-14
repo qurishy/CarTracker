@@ -1,0 +1,20 @@
+@GPS_DataSender_Api_HostAddress = http://localhost:5159
+
+GET {{GPS_DataSender_Api_HostAddress}}/api/Gps/positions/AF
+Accept: application/json
+
+
+
+
+###
+GET {{GPS_DataSender_Api_HostAddress}}/api/Gps/car/1/position?countryCode=AF
+Accept: application/json
+
+###
+
+GET {{GPS_DataSender_Api_HostAddress}}/api/Gps/cars/AF
+Accept: application/json
+
+###
+
+

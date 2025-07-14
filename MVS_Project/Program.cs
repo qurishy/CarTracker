@@ -16,13 +16,33 @@ builder.Services.AddSignalR();
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
+builder.Services.AddHttpClient<RealGpsService>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["GpsApi:BaseUrl"]);
+    client.Timeout = TimeSpan.FromSeconds(30);
+}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+{
+    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+});
 
-// Register services
-// builder.Services.AddSingleton<IGpsDataService, RealGpsService>(); // Replace with your actual implementation>
+// Register GPS services
+builder.Services.AddScoped<IGpsDataService, RealGpsService>();
 
-builder.Services.AddSingleton<IGpsDataService, SimulatedGpsService>();
-builder.Services.AddHostedService(provider =>
-    (SimulatedGpsService)provider.GetRequiredService<IGpsDataService>());
+// Register background service for periodic GPS updates
+builder.Services.AddHostedService<GpsBackgroundService>();
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
+// Add logging
+builder.Services.AddLogging();
 
 var app = builder.Build();
 
@@ -35,6 +55,9 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.UseCors("AllowAll");
+
 app.UseStaticFiles();
 
 app.UseRouting();
@@ -45,7 +68,7 @@ app.MapStaticAssets();
 
 app.MapControllerRoute(
     name: "default",
-    pattern: "{controller=Map}/{action=Index}/{id?}");
+    pattern: "{controller=Map}/{action=Dashboard}/{id?}");
 
 app.MapHub<TrackingHub>("/trackingHub");
 

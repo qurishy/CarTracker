@@ -1,0 +1,839 @@
+﻿@model dynamic
+@{
+    ViewData["Title"] = "Vehicle Tracking Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="fas fa-tachometer-alt"></i> Vehicle Tracking Dashboard</h2>
+                <div>
+                    <button class="btn btn-primary" onclick="refreshDashboard()">
+                        <i class="fas fa-sync"></i> Refresh
+                    </button>
+                    <a href="/Map/Index" class="btn btn-success">
+                        <i class="fas fa-map"></i> View Map
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="totalCars">@(Model?.TotalCars ?? 0)</h4>
+                            <p class="card-text">Total Vehicles</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-car fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="activeCars">@(Model?.ActiveCars ?? 0)</h4>
+                            <p class="card-text">Active Vehicles</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-wifi fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card bg-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="inactiveCars">@(Model?.InactiveCars ?? 0)</h4>
+                            <p class="card-text">Inactive Vehicles</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-exclamation-triangle fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3 col-sm-6 mb-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h4 id="todayLocations">@(Model?.TodayLocations ?? 0)</h4>
+                            <p class="card-text">Today's Locations</p>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-map-marker-alt fa-2x"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Vehicle List -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-list"></i> Vehicle List</h5>
+                </div>
+                <div class="card-body">
+                    <div id="vehicleList">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Loading vehicles...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-time Activity -->
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-clock"></i> Real-time Activity</h5>
+                </div>
+                <div class="card-body">
+                    <div id="activityFeed" style="height: 300px; overflow-y: auto;">
+                        <div class="text-center text-muted">
+                            <i class="fas fa-satellite-dish fa-2x"></i>
+                            <p class="mt-2">Waiting for real-time updates...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- System Health and Controls -->
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-heartbeat"></i> System Health</h5>
+                </div>
+                <div class="card-body">
+                    <div class="health-item mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Database Connection</span>
+                            <span id="dbHealthStatus" class="badge bg-secondary">Checking...</span>
+                        </div>
+                    </div>
+                    <div class="health-item mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>GPS API Status</span>
+                            <span id="gpsHealthStatus" class="badge bg-secondary">Checking...</span>
+                        </div>
+                    </div>
+                    <div class="health-item mb-3">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>SignalR Connection</span>
+                            <span id="signalrHealthStatus" class="badge bg-secondary">Connecting...</span>
+                        </div>
+                    </div>
+                    <div class="health-item">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span>Last Update</span>
+                            <small id="lastUpdateTime" class="text-muted">@(Model?.LastUpdate.ToString("HH:mm:ss") ?? "N/A")</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-cogs"></i> GPS Controls</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <label for="countrySelect" class="form-label">Country:</label>
+                        <select id="countrySelect" class="form-select">
+                            <option value="AF">Afghanistan</option>
+                            <option value="US">United States</option>
+                            <option value="GB">United Kingdom</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <button id="refreshGpsBtn" class="btn btn-primary w-100">
+                            <i class="fas fa-sync"></i> Refresh GPS Data
+                        </button>
+                    </div>
+                    <div class="mb-3">
+                        <button id="toggleAutoRefresh" class="btn btn-success w-100">
+                            <i class="fas fa-play"></i> Start Auto-Refresh
+                        </button>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="enableNotifications">
+                        <label class="form-check-label" for="enableNotifications">
+                            Enable Notifications
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-line"></i> Quick Stats</h5>
+                </div>
+                <div class="card-body">
+                    <div class="stat-item mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Total Locations</span>
+                            <strong id="totalLocations">@(Model?.TotalLocations ?? 0)</strong>
+                        </div>
+                    </div>
+                    <div class="stat-item mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Avg. Daily Locations</span>
+                            <strong id="avgDailyLocations">-</strong>
+                        </div>
+                    </div>
+                    <div class="stat-item mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>Most Active Vehicle</span>
+                            <strong id="mostActiveVehicle">-</strong>
+                        </div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="d-flex justify-content-between">
+                            <span>System Uptime</span>
+                            <strong id="systemUptime">-</strong>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Location History -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5><i class="fas fa-history"></i> Recent Location History</h5>
+                        <div>
+                            <button class="btn btn-sm btn-outline-primary" onclick="exportHistory()">
+                                <i class="fas fa-download"></i> Export
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="refreshHistory()">
+                                <i class="fas fa-sync"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="historyTable">
+                            <thead>
+                                <tr>
+                                    <th>Vehicle</th>
+                                    <th>License Plate</th>
+                                    <th>Location</th>
+                                    <th>Timestamp</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center">
+                                        <div class="spinner-border text-primary" role="status">
+                                            <span class="visually-hidden">Loading...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Notifications Container -->
+<div id="notifications" class="position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
+
+<!-- Vehicle Details Modal -->
+<div class="modal fade" id="vehicleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Vehicle Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="vehicleModalBody">
+                <!-- Vehicle details will be loaded here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="trackVehicle()">Track on Map</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add required CSS -->
+<style>
+    .card {
+        box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+        border: 1px solid rgba(0, 0, 0, 0.125);
+    }
+
+    .card-header {
+        background-color: #f8f9fa;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+    }
+
+    .vehicle-item {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        padding: 1rem;
+        margin-bottom: 0.5rem;
+        transition: all 0.2s ease-in-out;
+    }
+
+        .vehicle-item:hover {
+            box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+            transform: translateY(-1px);
+        }
+
+        .vehicle-item.active {
+            border-left: 4px solid #28a745;
+            background-color: #f8fff8;
+        }
+
+        .vehicle-item.inactive {
+            border-left: 4px solid #dc3545;
+            background-color: #fff5f5;
+        }
+
+    .activity-item {
+        border-left: 3px solid #007bff;
+        padding-left: 1rem;
+        margin-bottom: 1rem;
+        background-color: #f8f9fa;
+        border-radius: 0.375rem;
+        padding: 0.75rem;
+    }
+
+        .activity-item.success {
+            border-left-color: #28a745;
+        }
+
+        .activity-item.warning {
+            border-left-color: #ffc107;
+        }
+
+        .activity-item.error {
+            border-left-color: #dc3545;
+        }
+
+    .health-item {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+        .health-item:last-child {
+            border-bottom: none;
+        }
+
+    .stat-item {
+        padding: 0.5rem 0;
+        border-bottom: 1px solid #dee2e6;
+    }
+
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+    .notification {
+        max-width: 350px;
+        margin-bottom: 1rem;
+    }
+
+    @@keyframes fadeIn {
+        from
+
+    {
+        opacity: 0;
+        transform: translateX(100%);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    }
+
+    .notification {
+        animation: fadeIn 0.3s ease-out;
+    }
+</style>
+
+<!-- Required Scripts -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/js/all.min.js"></script>
+
+<script>
+    // Global variables
+    let connection;
+    let autoRefreshInterval;
+    let isAutoRefreshEnabled = false;
+    let notificationsEnabled = false;
+    let selectedVehicleId = null;
+    let startTime = new Date();
+
+    // Initialize SignalR connection
+    async function initSignalR() {
+        connection = new signalR.HubConnectionBuilder()
+            .withUrl("/trackingHub")
+            .build();
+
+        connection.on("PositionUpdated", function (carId, latitude, longitude, timestamp) {
+            handlePositionUpdate(carId, latitude, longitude, timestamp);
+        });
+
+        connection.onclose(function () {
+            updateHealthStatus('signalrHealthStatus', false, 'Disconnected');
+            setTimeout(initSignalR, 5000); // Retry connection
+        });
+
+        try {
+            await connection.start();
+            updateHealthStatus('signalrHealthStatus', true, 'Connected');
+            console.log("SignalR Connected");
+        } catch (err) {
+            console.error("SignalR Connection Error:", err);
+            updateHealthStatus('signalrHealthStatus', false, 'Connection Failed');
+        }
+    }
+
+    // Handle position updates
+    function handlePositionUpdate(carId, latitude, longitude, timestamp) {
+        addActivityItem(`Vehicle ${carId} position updated`, 'success', timestamp);
+
+        if (notificationsEnabled) {
+            showNotification(`Vehicle ${carId} moved to new location`, 'info');
+        }
+
+        // Update vehicle list if visible
+        updateVehicleInList(carId, latitude, longitude, timestamp);
+    }
+
+    // Load dashboard data
+    async function loadDashboardData() {
+        try {
+            const response = await fetch('/Map/Dashboard');
+            if (!response.ok) throw new Error('Failed to load dashboard data');
+
+            // Dashboard data is already loaded server-side
+            await loadVehicleList();
+            await loadRecentHistory();
+            await checkSystemHealth();
+        } catch (error) {
+            console.error('Error loading dashboard data:', error);
+            showNotification('Failed to load dashboard data', 'error');
+        }
+    }
+
+    // Load vehicle list
+    async function loadVehicleList() {
+        try {
+            const response = await fetch('/Map/GetActiveCars');
+            const vehicles = await response.json();
+
+            const vehicleList = document.getElementById('vehicleList');
+            vehicleList.innerHTML = '';
+
+            if (vehicles.length === 0) {
+                vehicleList.innerHTML = '<p class="text-muted text-center">No vehicles found</p>';
+                return;
+            }
+
+            vehicles.forEach(vehicle => {
+                const vehicleDiv = document.createElement('div');
+                vehicleDiv.className = `vehicle-item ${vehicle.IsActive ? 'active' : 'inactive'}`;
+                vehicleDiv.id = `vehicle-${vehicle.Id}`;
+
+                vehicleDiv.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${vehicle.Make} ${vehicle.Model}</h6>
+                            <small class="text-muted">${vehicle.LicensePlate}</small>
+                        </div>
+                        <div>
+                            <span class="badge ${vehicle.IsActive ? 'bg-success' : 'bg-danger'}">
+                                ${vehicle.IsActive ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <small class="text-muted">
+                            Last tracked: ${new Date(vehicle.LastTracked).toLocaleString()}
+                        </small>
+                    </div>
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${vehicle.Id})">
+                            <i class="fas fa-info"></i> Details
+                        </button>
+                        <button class="btn btn-sm btn-outline-success" onclick="trackVehicleOnMap(${vehicle.Id})">
+                            <i class="fas fa-map"></i> Track
+                        </button>
+                    </div>
+                `;
+
+                vehicleList.appendChild(vehicleDiv);
+            });
+
+            // Update statistics
+            updateStatistics(vehicles);
+        } catch (error) {
+            console.error('Error loading vehicle list:', error);
+            document.getElementById('vehicleList').innerHTML = '<p class="text-danger">Failed to load vehicles</p>';
+        }
+    }
+
+    // Update statistics
+    function updateStatistics(vehicles) {
+        const totalCars = vehicles.length;
+        const activeCars = vehicles.filter(v => v.IsActive).length;
+        const inactiveCars = totalCars - activeCars;
+
+        document.getElementById('totalCars').textContent = totalCars;
+        document.getElementById('activeCars').textContent = activeCars;
+        document.getElementById('inactiveCars').textContent = inactiveCars;
+
+        // Calculate most active vehicle
+        const mostActive = vehicles.reduce((prev, current) =>
+            (prev.LocationCount > current.LocationCount) ? prev : current
+        );
+
+        if (mostActive && mostActive.LocationCount > 0) {
+            document.getElementById('mostActiveVehicle').textContent = mostActive.LicensePlate;
+        }
+    }
+
+    // Load recent history
+    async function loadRecentHistory() {
+        try {
+            const response = await fetch('/Map/GetAllCarsHistory');
+            const historyData = await response.json();
+
+            const tbody = document.getElementById('historyTableBody');
+            tbody.innerHTML = '';
+
+            if (historyData.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent history found</td></tr>';
+                return;
+            }
+
+            historyData.data.forEach(car => {
+                car.Locations.slice(0, 5).forEach(location => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${car.Make} ${car.Model}</td>
+                        <td>${car.LicensePlate}</td>
+                        <td>${location.Latitude.toFixed(6)}, ${location.Longitude.toFixed(6)}</td>
+                        <td>${new Date(location.Timestamp).toLocaleString()}</td>
+                        <td><span class="badge bg-success">Active</span></td>
+                        <td>
+                            <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${car.CarId})">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            });
+        } catch (error) {
+            console.error('Error loading recent history:', error);
+            document.getElementById('historyTableBody').innerHTML =
+                '<tr><td colspan="6" class="text-center text-danger">Failed to load history</td></tr>';
+        }
+    }
+
+    // Check system health
+    async function checkSystemHealth() {
+        try {
+            const healthResponse = await fetch('/Map/GetSystemHealth');
+            const health = await healthResponse.json();
+
+            updateHealthStatus('dbHealthStatus', health.databaseConnected,
+                health.databaseConnected ? 'Connected' : 'Disconnected');
+
+            const gpsResponse = await fetch('/Map/CheckGpsApiStatus');
+            const gpsStatus = await gpsResponse.json();
+
+            updateHealthStatus('gpsHealthStatus', gpsStatus.success,
+                gpsStatus.success ? 'Connected' : 'Disconnected');
+
+            document.getElementById('lastUpdateTime').textContent = new Date().toLocaleString();
+        } catch (error) {
+            console.error('Health check failed:', error);
+            updateHealthStatus('dbHealthStatus', false, 'Error');
+            updateHealthStatus('gpsHealthStatus', false, 'Error');
+        }
+    }
+
+    // Update health status
+    function updateHealthStatus(elementId, isHealthy, text) {
+        const element = document.getElementById(elementId);
+        element.className = `badge ${isHealthy ? 'bg-success' : 'bg-danger'}`;
+        element.textContent = text;
+    }
+
+    // Show vehicle details
+    async function showVehicleDetails(vehicleId) {
+        try {
+            const response = await fetch(`/Map/GetCar/${vehicleId}`);
+            const vehicle = await response.json();
+
+            document.getElementById('vehicleModalBody').innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Vehicle Information</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>License Plate:</strong></td><td>${vehicle.LicensePlate}</td></tr>
+                            <tr><td><strong>Make:</strong></td><td>${vehicle.Make}</td></tr>
+                            <tr><td><strong>Model:</strong></td><td>${vehicle.Model}</td></tr>
+                            <tr><td><strong>Last Tracked:</strong></td><td>${new Date(vehicle.LastTracked).toLocaleString()}</td></tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Location Statistics</h6>
+                        <table class="table table-sm">
+                            <tr><td><strong>Total Locations:</strong></td><td>${vehicle.TotalLocations}</td></tr>
+                            <tr><td><strong>First Tracked:</strong></td><td>${vehicle.FirstTracked ? new Date(vehicle.FirstTracked).toLocaleString() : 'N/A'}</td></tr>
+                            <tr><td><strong>Current Position:</strong></td><td>
+                                ${vehicle.LastPosition ?
+                                    `${vehicle.LastPosition.Latitude.toFixed(6)}, ${vehicle.LastPosition.Longitude.toFixed(6)}` :
+                                    'No position data'
+                                }
+                            </td></tr>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            selectedVehicleId = vehicleId;
+            new bootstrap.Modal(document.getElementById('vehicleModal')).show();
+        } catch (error) {
+            console.error('Error loading vehicle details:', error);
+            showNotification('Failed to load vehicle details', 'error');
+        }
+    }
+
+    // Track vehicle on map
+    function trackVehicleOnMap(vehicleId) {
+        window.open(`/Map/Index?trackVehicle=${vehicleId}`, '_blank');
+    }
+
+    // Refresh GPS data
+    async function refreshGpsData() {
+        const countryCode = document.getElementById('countrySelect').value;
+        const btn = document.getElementById('refreshGpsBtn');
+
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+
+        try {
+            const response = await fetch('/Map/RefreshGpsPositions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(countryCode)
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                showNotification(`Refreshed ${result.data.length} vehicle positions`, 'success');
+                addActivityItem(`GPS data refreshed for ${result.data.length} vehicles`, 'success');
+                await loadVehicleList();
+            } else {
+                showNotification(result.message, 'warning');
+            }
+        } catch (error) {
+            console.error('Error refreshing GPS data:', error);
+            showNotification('Failed to refresh GPS data', 'error');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fas fa-sync"></i> Refresh GPS Data';
+        }
+    }
+
+    // Toggle auto-refresh
+    function toggleAutoRefresh() {
+        const btn = document.getElementById('toggleAutoRefresh');
+
+        if (isAutoRefreshEnabled) {
+            clearInterval(autoRefreshInterval);
+            isAutoRefreshEnabled = false;
+            btn.innerHTML = '<i class="fas fa-play"></i> Start Auto-Refresh';
+            btn.className = 'btn btn-success w-100';
+            addActivityItem('Auto-refresh disabled', 'warning');
+        } else {
+            autoRefreshInterval = setInterval(refreshGpsData, 30000);
+            isAutoRefreshEnabled = true;
+            btn.innerHTML = '<i class="fas fa-stop"></i> Stop Auto-Refresh';
+            btn.className = 'btn btn-danger w-100';
+            addActivityItem('Auto-refresh enabled (30s interval)', 'success');
+        }
+    }
+
+    // Show notification
+    function showNotification(message, type = 'info') {
+        const notifications = document.getElementById('notifications');
+        const notification = document.createElement('div');
+
+        const bgClass = {
+            success: 'bg-success',
+            error: 'bg-danger',
+            warning: 'bg-warning',
+            info: 'bg-info'
+        }[type] || 'bg-info';
+
+        notification.className = `alert ${bgClass} text-white notification`;
+        notification.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <span>${message}</span>
+                <button type="button" class="btn-close btn-close-white" onclick="this.parentElement.parentElement.remove()"></button>
+            </div>
+        `;
+
+        notifications.appendChild(notification);
+
+        setTimeout(() => {
+            notification.remove();
+        }, 5000);
+    }
+
+    // Add activity item
+    function addActivityItem(message, type = 'info', timestamp = new Date()) {
+        const activityFeed = document.getElementById('activityFeed');
+        const item = document.createElement('div');
+
+        item.className = `activity-item ${type}`;
+        item.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <span>${message}</span>
+                <small class="text-muted">${new Date(timestamp).toLocaleTimeString()}</small>
+            </div>
+        `;
+
+        activityFeed.insertBefore(item, activityFeed.firstChild);
+
+        // Keep only last 20 items
+        while (activityFeed.children.length > 20) {
+            activityFeed.removeChild(activityFeed.lastChild);
+        }
+    }
+
+    // Update vehicle in list
+    function updateVehicleInList(carId, latitude, longitude, timestamp) {
+        const vehicleElement = document.getElementById(`vehicle-${carId}`);
+        if (vehicleElement) {
+            const timestampElement = vehicleElement.querySelector('.text-muted');
+            if (timestampElement) {
+                timestampElement.textContent = `Last tracked: ${new Date(timestamp).toLocaleString()}`;
+            }
+
+            // Update to active status
+            vehicleElement.className = 'vehicle-item active';
+            const badge = vehicleElement.querySelector('.badge');
+            if (badge) {
+                badge.className = 'badge bg-success';
+                badge.textContent = 'Active';
+            }
+        }
+    }
+
+    // Update system uptime
+    function updateSystemUptime() {
+        const uptime = new Date() - startTime;
+        const hours = Math.floor(uptime / (1000 * 60 * 60));
+        const minutes = Math.floor((uptime % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((uptime % (1000 * 60)) / 1000);
+
+        document.getElementById('systemUptime').textContent = `${hours}h ${minutes}m ${seconds}s`;
+    }
+
+    // Export history
+    function exportHistory() {
+        // This would typically generate a CSV or Excel file
+        showNotification('Export functionality would be implemented here', 'info');
+    }
+
+    // Refresh functions
+    async function refreshDashboard() {
+        await loadDashboardData();
+        showNotification('Dashboard refreshed', 'success');
+    }
+
+    async function refreshHistory() {
+        await loadRecentHistory();
+        showNotification('History refreshed', 'success');
+    }
+
+    function trackVehicle() {
+        if (selectedVehicleId) {
+            trackVehicleOnMap(selectedVehicleId);
+        }
+    }
+
+    // Event listeners
+    document.getElementById('refreshGpsBtn').addEventListener('click', refreshGpsData);
+    document.getElementById('toggleAutoRefresh').addEventListener('click', toggleAutoRefresh);
+    document.getElementById('enableNotifications').addEventListener('change', function() {
+        notificationsEnabled = this.checked;
+        showNotification(
+            notificationsEnabled ? 'Notifications enabled' : 'Notifications disabled',
+            notificationsEnabled ? 'success' : 'warning'
+        );
+    });
+
+    // Initialize dashboard
+    document.addEventListener('DOMContentLoaded', function() {
+        initSignalR();
+        loadDashboardData();
+
+        // Update uptime every second
+        setInterval(updateSystemUptime, 1000);
+
+        // Check system health every 30 seconds
+        setInterval(checkSystemHealth, 30000);
+
+        // Initial activity message
+        addActivityItem('Dashboard initialized', 'success');
+    });
+</script>
