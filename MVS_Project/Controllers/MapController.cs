@@ -305,25 +305,25 @@ namespace MVS_Project.Controllers
                 var end = endDate ?? DateTime.UtcNow;
 
                 var history = await _context.LocationHistory
-                    .Include(l => l.Car)
-                    .Where(l => l.Timestamp >= start && l.Timestamp <= end)
-                    .OrderByDescending(l => l.Timestamp)
-                    .GroupBy(l => l.CarId)
-                    .Select(g => new
-                    {
-                        CarId = g.Key,
-                        LicensePlate = g.First().Car.LicensePlate,
-                        Make = g.First().Car.Make,
-                        Model = g.First().Car.Model,
-                        LocationCount = g.Count(),
-                        Locations = g.Select(l => new
-                        {
-                            l.Latitude,
-                            l.Longitude,
-                            l.Timestamp
-                        }).ToList()
-                    })
-                    .ToListAsync();
+        .Include(l => l.Car)
+        .Where(l => l.Timestamp >= start && l.Timestamp <= end)
+        .OrderByDescending(l => l.Timestamp)
+        .GroupBy(l => l.CarId)
+        .Select(g => new
+        {
+            CarId = g.Key,
+            LicensePlate = g.First().Car.LicensePlate,
+            Make = g.First().Car.Make,
+            Model = g.First().Car.Model,
+            LocationCount = g.Count(),
+            Locations = g.Select(l => new  // Ensure this is always populated
+            {
+                l.Latitude,
+                l.Longitude,
+                l.Timestamp
+            }).ToList() // Convert to list to avoid null
+        })
+        .ToListAsync();
 
                 return Json(new
                 {

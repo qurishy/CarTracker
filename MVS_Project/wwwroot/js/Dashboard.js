@@ -59,63 +59,104 @@
         }
     }
 
-    // Load vehicle list
-    async function loadVehicleList() {
-        try {
-            const response = await fetch('/Map/GetActiveCars');
-            const vehicles = await response.json();
+// Load vehicle list - FIXED VERSION
+async function loadVehicleList() {
+    try {
+        console.log("Starting loadVehicleList...");
 
-            const vehicleList = document.getElementById('vehicleList');
-            vehicleList.innerHTML = '';
+        // 1. Fetch data
+        const response = await fetch('/Map/GetActiveCars');
+        console.log("Response status:", response.status);
 
-            if (vehicles.length === 0) {
-                vehicleList.innerHTML = '<p class="text-muted text-center">No vehicles found</p>';
+        // 2. Check for HTTP errors
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
+
+        // 3. Parse JSON
+        const vehicles = await response.json();
+        console.log("Received vehicles data:", vehicles);
+
+        const vehicleList = document.getElementById('vehicleList');
+        vehicleList.innerHTML = '';
+
+        // 4. Check if we actually got an array
+        if (!Array.isArray(vehicles)) {
+            throw new Error(`Expected array but got ${typeof vehicles}`);
+        }
+
+        if (vehicles.length === 0) {
+            vehicleList.innerHTML = '<p class="text-muted text-center">No vehicles found</p>';
+            return;
+        }
+
+        // 5. Process each vehicle
+        vehicles.forEach(vehicle => {
+            console.log("Processing vehicle:", vehicle);
+
+            // 6. Validate required properties
+            const requiredProps = ['Id', 'Make', 'Model', 'LicensePlate', 'LastTracked', 'IsActive'];
+            const missingProps = requiredProps.filter(prop => !(prop in vehicle));
+
+            if (missingProps.length > 0) {
+                console.error(`Vehicle ${vehicle.Id} missing properties:`, missingProps);
                 return;
             }
 
-            vehicles.forEach(vehicle => {
-                const vehicleDiv = document.createElement('div');
-                vehicleDiv.className = `vehicle-item ${vehicle.IsActive ? 'active' : 'inactive'}`;
-                vehicleDiv.id = `vehicle-${vehicle.Id}`;
+            const vehicleDiv = document.createElement('div');
+            vehicleDiv.className = `vehicle-item ${vehicle.IsActive ? 'active' : 'inactive'}`;
+            vehicleDiv.id = `vehicle-${vehicle.Id}`;
 
-                vehicleDiv.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div>
-                            <h6 class="mb-1">${vehicle.Make} ${vehicle.Model}</h6>
-                            <small class="text-muted">${vehicle.LicensePlate}</small>
-                        </div>
-                        <div>
-                            <span class="badge ${vehicle.IsActive ? 'bg-success' : 'bg-danger'}">
-                                ${vehicle.IsActive ? 'Active' : 'Inactive'}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="mt-2">
-                        <small class="text-muted">
-                            Last tracked: ${new Date(vehicle.LastTracked).toLocaleString()}
-                        </small>
-                    </div>
-                    <div class="mt-2">
-                        <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${vehicle.Id})">
-                            <i class="fas fa-info"></i> Details
-                        </button>
-                        <button class="btn btn-sm btn-outline-success" onclick="trackVehicleOnMap(${vehicle.Id})">
-                            <i class="fas fa-map"></i> Track
-                        </button>
-                    </div>
-                `;
+            // 7. Safely handle potentially missing LastPosition
+            const lastPositionInfo = vehicle.LastPosition
+                ? `Position: ${vehicle.LastPosition.Latitude}, ${vehicle.LastPosition.Longitude}`
+                : 'No position data';
 
-                vehicleList.appendChild(vehicleDiv);
-            });
+            vehicleDiv.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">${vehicle.Make} ${vehicle.Model}</h6>
+                        <small class="text-muted">${vehicle.LicensePlate}</small>
+                    </div>
+                    <div>
+                        <span class="badge ${vehicle.IsActive ? 'bg-success' : 'bg-danger'}">
+                            ${vehicle.IsActive ? 'Active' : 'Inactive'}
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Last tracked: ${new Date(vehicle.LastTracked).toLocaleString()}
+                    </small>
+                    <br>
+                    <small>${lastPositionInfo}</small>
+                </div>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${vehicle.Id})">
+                        <i class="fas fa-info"></i> Details
+                    </button>
+                    <button class="btn btn-sm btn-outline-success" onclick="trackVehicleOnMap(${vehicle.Id})">
+                        <i class="fas fa-map"></i> Track
+                    </button>
+                </div>
+            `;
 
-            // Update statistics
-            updateStatistics(vehicles);
-        } catch (error) {
-            console.error('Error loading vehicle list:', error);
-            document.getElementById('vehicleList').innerHTML = '<p class="text-danger">Failed to load vehicles</p>';
-        }
+            vehicleList.appendChild(vehicleDiv);
+        });
+
+        // Update statistics
+        updateStatistics(vehicles);
+    } catch (error) {
+        console.error('Error loading vehicle list:', error);
+        document.getElementById('vehicleList').innerHTML = `
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-triangle"></i> 
+                Failed to load vehicles: ${error.message}
+            </div>
+        `;
     }
-
+}
     // Update statistics
     function updateStatistics(vehicles) {
         const totalCars = vehicles.length;
@@ -137,43 +178,48 @@
     }
 
     // Load recent history
-    async function loadRecentHistory() {
-        try {
-            const response = await fetch('/Map/GetAllCarsHistory');
-            const historyData = await response.json();
+async function loadRecentHistory() {
+    try {
+        const response = await fetch('/Map/GetAllCarsHistory');
+        const historyData = await response.json();
 
-            const tbody = document.getElementById('historyTableBody');
-            tbody.innerHTML = '';
+        const tbody = document.getElementById('historyTableBody');
+        tbody.innerHTML = '';
 
-            if (historyData.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent history found</td></tr>';
-                return;
-            }
-
-            historyData.data.forEach(car => {
-                car.Locations.slice(0, 5).forEach(location => {
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td>${car.Make} ${car.Model}</td>
-                        <td>${car.LicensePlate}</td>
-                        <td>${location.Latitude.toFixed(6)}, ${location.Longitude.toFixed(6)}</td>
-                        <td>${new Date(location.Timestamp).toLocaleString()}</td>
-                        <td><span class="badge bg-success">Active</span></td>
-                        <td>
-                            <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${car.CarId})">
-                                <i class="fas fa-eye"></i>
-                            </button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-            });
-        } catch (error) {
-            console.error('Error loading recent history:', error);
-            document.getElementById('historyTableBody').innerHTML =
-                '<tr><td colspan="6" class="text-center text-danger">Failed to load history</td></tr>';
+        // 1. Check if historyData.data exists and is an array
+        if (!historyData.data || !Array.isArray(historyData.data) || historyData.data.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent history found</td></tr>';
+            return;
         }
+
+        historyData.data.forEach(car => {
+            // 2. Safely handle missing Locations array
+            const locations = Array.isArray(car.Locations) ? car.Locations : [];
+
+            // 3. Take only the first 5 locations
+            locations.slice(0, 5).forEach(location => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${car.Make || 'N/A'} ${car.Model || 'N/A'}</td>
+                    <td>${car.LicensePlate || 'N/A'}</td>
+                    <td>${location.Latitude?.toFixed(6) || 'N/A'}, ${location.Longitude?.toFixed(6) || 'N/A'}</td>
+                    <td>${location.Timestamp ? new Date(location.Timestamp).toLocaleString() : 'N/A'}</td>
+                    <td><span class="badge bg-success">Active</span></td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${car.CarId})">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        });
+    } catch (error) {
+        console.error('Error loading recent history:', error);
+        document.getElementById('historyTableBody').innerHTML =
+            '<tr><td colspan="6" class="text-center text-danger">Failed to load history</td></tr>';
     }
+}
 
     // Check system health
     async function checkSystemHealth() {
