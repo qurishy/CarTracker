@@ -1,157 +1,622 @@
-﻿@{
-    ViewData["Title"] = "Live Car Tracker";
+﻿@model dynamic
+@{
+    ViewData["Title"] = "Vehicle Tracking Map";
+    var initialCars = ViewBag.InitialCars as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
 }
 
-<div id="map" style="height: 80vh;"></div>
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>@ViewData["Title"]</title>
 
-@section Scripts {
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        #map {
+            height: 70vh;
+            width: 100%;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .control-panel {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .car-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #007bff;
+        }
+
+            .car-info.active {
+                border-left-color: #28a745;
+                background: #f8fff8;
+            }
+
+            .car-info.inactive {
+                border-left-color: #dc3545;
+                background: #fff8f8;
+            }
+
+        .status-badge {
+            font-size: 0.8em;
+            padding: 4px 8px;
+            border-radius: 12px;
+        }
+
+        .status-online {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-offline {
+            background: #dc3545;
+            color: white;
+        }
+
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .connection-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 10px 15px;
+            border-radius: 5px;
+            color: white;
+            font-weight: bold;
+        }
+
+            .connection-status.connected {
+                background: #28a745;
+            }
+
+            .connection-status.disconnected {
+                background: #dc3545;
+            }
+
+        .car-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .btn-group-custom {
+            margin-bottom: 15px;
+        }
+
+        .alert-custom {
+            margin-top: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Left Panel - Controls -->
+            <div class="col-md-3">
+                <div class="control-panel">
+                    <h4><i class="fas fa-car"></i> Vehicle Tracking</h4>
+                    <hr>
+
+                    <!-- Control Buttons -->
+                    <div class="btn-group-custom">
+                        <button id="refreshBtn" class="btn btn-primary btn-sm me-2">
+                            <i class="fas fa-sync"></i> Refresh GPS
+                        </button>
+                        <button id="toggleTracking" class="btn btn-success btn-sm">
+                            <i class="fas fa-play"></i> Start Tracking
+                        </button>
+                    </div>
+
+                    <!-- Country Selection -->
+                    <div class="mb-3">
+                        <label for="countryCode" class="form-label">Country:</label>
+                        <select id="countryCode" class="form-select form-select-sm">
+                            <option value="AF">Afghanistan</option>
+                            <option value="US">United States</option>
+                            <option value="GB">United Kingdom</option>
+                        </select>
+                    </div>
+
+                    <!-- Auto-refresh toggle -->
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="autoRefresh">
+                        <label class="form-check-label" for="autoRefresh">
+                            Auto-refresh (30s)
+                        </label>
+                    </div>
+
+                    <!-- Cars List -->
+                    <h5>Active Vehicles</h5>
+                    <div id="carsList" class="car-list">
+                        <!-- Cars will be populated here -->
+                    </div>
+
+                    <!-- Loading Spinner -->
+                    <div id="loadingSpinner" class="loading-spinner">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p>Loading vehicle data...</p>
+                    </div>
+                </div>
+
+                <!-- System Status -->
+                <div class="control-panel">
+                    <h5><i class="fas fa-heartbeat"></i> System Status</h5>
+                    <div id="systemStatus">
+                        <p><span id="dbStatus" class="badge bg-secondary">Checking...</span> Database</p>
+                        <p><span id="gpsStatus" class="badge bg-secondary">Checking...</span> GPS API</p>
+                        <p><span id="signalrStatus" class="badge bg-secondary">Connecting...</span> Real-time Updates</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Map -->
+            <div class="col-md-9">
+                <div class="control-panel">
+                    <div id="map"></div>
+
+                    <!-- Map Controls -->
+                    <div class="mt-3">
+                        <button id="centerMapBtn" class="btn btn-outline-primary btn-sm">
+                            <i class="fas fa-crosshairs"></i> Center Map
+                        </button>
+                        <button id="showAllCarsBtn" class="btn btn-outline-info btn-sm">
+                            <i class="fas fa-eye"></i> Show All Cars
+                        </button>
+                        <button id="clearHistoryBtn" class="btn btn-outline-warning btn-sm">
+                            <i class="fas fa-eraser"></i> Clear History
+                        </button>
+                    </div>
+
+                    <!-- Alert Area -->
+                    <div id="alertArea" class="alert-custom"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Connection Status Indicator -->
+    <div id="connectionStatus" class="connection-status disconnected">
+        <i class="fas fa-wifi"></i> Connecting...
+    </div>
+
+    <!-- Car Details Modal -->
+    <div class="modal fade" id="carDetailsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Vehicle Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="carDetailsBody">
+                    <!-- Car details will be loaded here -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="trackCarBtn">Track Vehicle</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/9.0.1/signalr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
 
     <script>
-        // Afghanistan boundaries
-        const afgBounds = L.latLngBounds(
-            L.latLng(29.3772, 60.5042), // SW corner
-            L.latLng(38.4911, 74.9157)  // NE corner
-        );
+        // Global variables
+        let map;
+        let markers = {};
+        let carPaths = {};
+        let connection;
+        let isTracking = false;
+        let autoRefreshInterval;
+        let selectedCarId = null;
 
-        // Initialize map with constraints
-        const map = L.map('map', {
-            center: [33.93911, 67.709953],
-            zoom: 6,
-            maxBounds: afgBounds,
-            maxBoundsViscosity: 1.0
-        });
-
-        // Add tile layer
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([34.5553, 69.2075], 10); // Kabul, Afghanistan
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri'
         }).addTo(map);
+        }
 
-        // Car markers and metadata
-        const cars = new Map();
+        // Initialize SignalR connection
+        async function initSignalR() {
+            connection = new signalR.HubConnectionBuilder()
+                .withUrl("/trackingHub")
+                .build();
 
-        // Fetch initial car positions
-        fetch('/Map/GetActiveCars')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                data.forEach(car => {
-                    const pos = car.lastPosition;
-                    if (pos) {
-                        addOrUpdateCar(car.id, pos.latitude, pos.longitude, car);
-                    }
-                });
-                setupSignalR();
-            })
-            .catch(error => {
-                console.error('Error fetching car data:', error);
+            connection.on("PositionUpdated", function (carId, latitude, longitude, timestamp) {
+                updateCarPosition(carId, latitude, longitude, timestamp);
             });
 
-        function addOrUpdateCar(id, lat, lng, metadata) {
-            let carData = cars.get(id);
-            const newLatLng = L.latLng(lat, lng);
+            connection.onclose(function () {
+                updateConnectionStatus(false);
+                setTimeout(initSignalR, 5000); // Retry connection
+            });
 
-            if (!carData) {
-                // Create new marker
-                const marker = L.marker(newLatLng, {
-                    icon: L.divIcon({
-                        className: 'car-marker',
-                        html: '<div style="font-size:24px; color:blue">🚗</div>',
-                        iconSize: [30, 30]
-                    })
-                }).addTo(map);
-
-                // Add popup with info
-                const popupContent = `
-                    <b>${metadata.licensePlate}</b><br>
-                    ${metadata.make} ${metadata.model}<br>
-                    Last update: ${new Date().toLocaleTimeString()}
-                `;
-                marker.bindPopup(popupContent);
-
-                cars.set(id, {
-                    marker,
-                    metadata,
-                    prevLatLng: newLatLng  // Store initial position
-                });
-            } else {
-                // Update existing marker
-                const { marker, prevLatLng } = carData;
-
-                // Calculate rotation angle
-                let angle = 0;
-                if (prevLatLng) {
-                    angle = Math.atan2(
-                        lng - prevLatLng.lng,
-                        lat - prevLatLng.lat
-                    ) * 180 / Math.PI;
-                }
-
-                // Apply rotation to the icon
-                const iconElement = marker.getElement();
-                if (iconElement) {
-                    iconElement.style.transform = `rotate(${angle}deg)`;
-                    iconElement.style.transition = 'transform 0.5s ease';
-                }
-
-                // Update position
-                marker.setLatLng(newLatLng);
-
-                // Update popup
-                marker.getPopup().setContent(`
-                    <b>${metadata.licensePlate}</b><br>
-                    ${metadata.make} ${metadata.model}<br>
-                    Last update: ${new Date().toLocaleTimeString()}<br>
-                    Position: ${lat.toFixed(5)}, ${lng.toFixed(5)}
-                `);
-
-                // Update stored data with new position
-                cars.set(id, {
-                    marker,
-                    metadata,
-                    prevLatLng: newLatLng
-                });
+            try {
+                await connection.start();
+                updateConnectionStatus(true);
+                console.log("SignalR Connected");
+            } catch (err) {
+                console.error("SignalR Connection Error:", err);
+                updateConnectionStatus(false);
             }
         }
 
-        function setupSignalR() {
-            const connection = new signalR.HubConnectionBuilder()
-                .withUrl("/trackingHub")
-                .configureLogging(signalR.LogLevel.Information)
-                .build();
+        // Update connection status
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            const signalrStatusEl = document.getElementById('signalrStatus');
 
-            connection.on("ReceiveCarUpdate", (carId, lat, lng) => {
-                const carData = cars.get(carId);
-                if (carData) {
-                    addOrUpdateCar(carId, lat, lng, carData.metadata);
-                } else {
-                    console.warn(`Received update for unknown car ID: ${carId}`);
-                    // Fetch car metadata if we don't have it
-                    fetch(`/Map/GetCar/${carId}`)
-                        .then(response => response.json())
-                        .then(car => {
-                            addOrUpdateCar(carId, lat, lng, car);
-                        });
-                }
+            if (connected) {
+                statusEl.className = 'connection-status connected';
+                statusEl.innerHTML = '<i class="fas fa-wifi"></i> Connected';
+                signalrStatusEl.className = 'badge bg-success';
+                signalrStatusEl.textContent = 'Connected';
+            } else {
+                statusEl.className = 'connection-status disconnected';
+                statusEl.innerHTML = '<i class="fas fa-wifi"></i> Disconnected';
+                signalrStatusEl.className = 'badge bg-danger';
+                signalrStatusEl.textContent = 'Disconnected';
+            }
+        }
+
+        // Load initial cars
+        function loadInitialCars() {
+            const initialCars = @Html.Raw(Json.Serialize(initialCars));
+
+            initialCars.forEach(car => {
+                addCarToMap(car);
+                addCarToList(car);
             });
 
-            connection.start()
-                .then(() => {
-                    console.log("SignalR connected");
-                    // Subscribe to all active cars
-                    const carIds = Array.from(cars.keys());
-                    if (carIds.length > 0) {
-                        connection.invoke("SubscribeToCars", carIds)
-                            .catch(err => console.error('Subscribe error:', err));
-                    }
-                })
-                .catch(err => console.error('SignalR connection error:', err));
+            if (initialCars.length > 0) {
+                fitMapToMarkers();
+            }
         }
+
+        // Add car to map
+        function addCarToMap(car) {
+            if (car.LastPosition) {
+                const marker = L.marker([car.LastPosition.Latitude, car.LastPosition.Longitude])
+                    .addTo(map)
+                    .bindPopup(`
+                        <div>
+                            <h6>${car.Make} ${car.Model}</h6>
+                            <p><strong>License:</strong> ${car.LicensePlate}</p>
+                            <p><strong>Status:</strong> ${car.IsActive ? 'Active' : 'Inactive'}</p>
+                            <p><strong>Last Update:</strong> ${new Date(car.LastPosition.Timestamp).toLocaleString()}</p>
+                            <button class="btn btn-sm btn-primary" onclick="showCarDetails(${car.Id})">Details</button>
+                        </div>
+                    `);
+
+                markers[car.Id] = marker;
+
+                // Initialize path for car
+                carPaths[car.Id] = L.polyline([], {
+                    color: car.IsActive ? 'green' : 'red',
+                    weight: 3,
+                    opacity: 0.7
+                }).addTo(map);
+            }
+        }
+
+        // Add car to list
+        function addCarToList(car) {
+            const carsList = document.getElementById('carsList');
+            const carDiv = document.createElement('div');
+            carDiv.className = `car-info ${car.IsActive ? 'active' : 'inactive'}`;
+            carDiv.id = `car-${car.Id}`;
+
+            carDiv.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">${car.Make} ${car.Model}</h6>
+                        <small class="text-muted">${car.LicensePlate}</small>
+                    </div>
+                    <div>
+                        <span class="status-badge ${car.IsActive ? 'status-online' : 'status-offline'}">
+                            ${car.IsActive ? 'Online' : 'Offline'}
+                        </span>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Last seen: ${car.LastPosition ? new Date(car.LastPosition.Timestamp).toLocaleString() : 'Never'}
+                    </small>
+                </div>
+                <div class="mt-2">
+                    <button class="btn btn-sm btn-outline-primary" onclick="centerOnCar(${car.Id})">
+                        <i class="fas fa-crosshairs"></i> Center
+                    </button>
+                    <button class="btn btn-sm btn-outline-info" onclick="showCarDetails(${car.Id})">
+                        <i class="fas fa-info"></i> Details
+                    </button>
+                </div>
+            `;
+
+            carsList.appendChild(carDiv);
+        }
+
+        // Update car position
+        function updateCarPosition(carId, latitude, longitude, timestamp) {
+            if (markers[carId]) {
+                // Update marker position
+                markers[carId].setLatLng([latitude, longitude]);
+
+                // Add to path
+                if (carPaths[carId]) {
+                    carPaths[carId].addLatLng([latitude, longitude]);
+                }
+
+                // Update popup
+                markers[carId].bindPopup(`
+                    <div>
+                        <h6>Vehicle ${carId}</h6>
+                        <p><strong>Position:</strong> ${latitude.toFixed(6)}, ${longitude.toFixed(6)}</p>
+                        <p><strong>Last Update:</strong> ${new Date(timestamp).toLocaleString()}</p>
+                        <button class="btn btn-sm btn-primary" onclick="showCarDetails(${carId})">Details</button>
+                    </div>
+                `);
+
+                // Update list item
+                updateCarInList(carId, timestamp);
+            }
+        }
+
+        // Update car in list
+        function updateCarInList(carId, timestamp) {
+            const carElement = document.getElementById(`car-${carId}`);
+            if (carElement) {
+                const timestampElement = carElement.querySelector('.text-muted');
+                if (timestampElement) {
+                    timestampElement.textContent = `Last seen: ${new Date(timestamp).toLocaleString()}`;
+                }
+
+                // Update status to active
+                carElement.className = 'car-info active';
+                const statusBadge = carElement.querySelector('.status-badge');
+                if (statusBadge) {
+                    statusBadge.className = 'status-badge status-online';
+                    statusBadge.textContent = 'Online';
+                }
+            }
+        }
+
+        // Refresh GPS positions
+        async function refreshGpsPositions() {
+            const countryCode = document.getElementById('countryCode').value;
+            const refreshBtn = document.getElementById('refreshBtn');
+            const loadingSpinner = document.getElementById('loadingSpinner');
+
+            refreshBtn.disabled = true;
+            loadingSpinner.style.display = 'block';
+
+            try {
+                const response = await fetch('/Map/RefreshGpsPositions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(countryCode)
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('success', `Refreshed ${result.data.length} vehicle positions`);
+                    loadActiveCars(); // Reload car data
+                } else {
+                    showAlert('warning', result.message);
+                }
+            } catch (error) {
+                showAlert('danger', 'Failed to refresh GPS positions');
+                console.error('Error:', error);
+            } finally {
+                refreshBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+            }
+        }
+
+        // Load active cars
+        async function loadActiveCars() {
+            try {
+                const response = await fetch('/Map/GetActiveCars');
+                const cars = await response.json();
+
+                // Clear existing cars
+                document.getElementById('carsList').innerHTML = '';
+                Object.keys(markers).forEach(carId => {
+                    map.removeLayer(markers[carId]);
+                    if (carPaths[carId]) {
+                        map.removeLayer(carPaths[carId]);
+                    }
+                });
+                markers = {};
+                carPaths = {};
+
+                // Add new cars
+                cars.forEach(car => {
+                    addCarToMap(car);
+                    addCarToList(car);
+                });
+
+                checkSystemHealth();
+            } catch (error) {
+                showAlert('danger', 'Failed to load vehicle data');
+                console.error('Error:', error);
+            }
+        }
+
+        // Show car details
+        async function showCarDetails(carId) {
+            try {
+                const response = await fetch(`/Map/GetCar/${carId}`);
+                const car = await response.json();
+
+                document.getElementById('carDetailsBody').innerHTML = `
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h6>Vehicle Information</h6>
+                            <p><strong>License Plate:</strong> ${car.LicensePlate}</p>
+                            <p><strong>Make:</strong> ${car.Make}</p>
+                            <p><strong>Model:</strong> ${car.Model}</p>
+                            <p><strong>Last Tracked:</strong> ${new Date(car.LastTracked).toLocaleString()}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <h6>Location Data</h6>
+                            <p><strong>Total Locations:</strong> ${car.TotalLocations}</p>
+                            <p><strong>First Tracked:</strong> ${car.FirstTracked ? new Date(car.FirstTracked).toLocaleString() : 'N/A'}</p>
+                            ${car.LastPosition ? `
+                                <p><strong>Current Position:</strong><br>
+                                Lat: ${car.LastPosition.Latitude.toFixed(6)}<br>
+                                Lng: ${car.LastPosition.Longitude.toFixed(6)}</p>
+                            ` : '<p><strong>No position data available</strong></p>'}
+                        </div>
+                    </div>
+                `;
+
+                selectedCarId = carId;
+                new bootstrap.Modal(document.getElementById('carDetailsModal')).show();
+            } catch (error) {
+                showAlert('danger', 'Failed to load vehicle details');
+                console.error('Error:', error);
+            }
+        }
+
+        // Center map on car
+        function centerOnCar(carId) {
+            if (markers[carId]) {
+                map.setView(markers[carId].getLatLng(), 15);
+                markers[carId].openPopup();
+            }
+        }
+
+        // Fit map to show all markers
+        function fitMapToMarkers() {
+            if (Object.keys(markers).length > 0) {
+                const group = new L.featureGroup(Object.values(markers));
+                map.fitBounds(group.getBounds().pad(0.1));
+            }
+        }
+
+        // Show alert
+        function showAlert(type, message) {
+            const alertArea = document.getElementById('alertArea');
+            alertArea.innerHTML = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+
+            setTimeout(() => {
+                alertArea.innerHTML = '';
+            }, 5000);
+        }
+
+        // Toggle tracking
+        function toggleTracking() {
+            const toggleBtn = document.getElementById('toggleTracking');
+
+            if (isTracking) {
+                isTracking = false;
+                toggleBtn.innerHTML = '<i class="fas fa-play"></i> Start Tracking';
+                toggleBtn.className = 'btn btn-success btn-sm';
+
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                }
+            } else {
+                isTracking = true;
+                toggleBtn.innerHTML = '<i class="fas fa-stop"></i> Stop Tracking';
+                toggleBtn.className = 'btn btn-danger btn-sm';
+
+                // Start auto-refresh if enabled
+                if (document.getElementById('autoRefresh').checked) {
+                    autoRefreshInterval = setInterval(refreshGpsPositions, 30000);
+                }
+            }
+        }
+
+        // Check system health
+        async function checkSystemHealth() {
+            try {
+                const response = await fetch('/Map/GetSystemHealth');
+                const health = await response.json();
+
+                const dbStatusEl = document.getElementById('dbStatus');
+                const gpsStatusEl = document.getElementById('gpsStatus');
+
+                dbStatusEl.className = `badge ${health.databaseConnected ? 'bg-success' : 'bg-danger'}`;
+                dbStatusEl.textContent = health.databaseConnected ? 'Connected' : 'Disconnected';
+
+                // Check GPS API status
+                const gpsResponse = await fetch('/Map/CheckGpsApiStatus');
+                const gpsStatus = await gpsResponse.json();
+
+                gpsStatusEl.className = `badge ${gpsStatus.success ? 'bg-success' : 'bg-danger'}`;
+                gpsStatusEl.textContent = gpsStatus.success ? 'Connected' : 'Disconnected';
+
+            } catch (error) {
+                console.error('Health check failed:', error);
+            }
+        }
+
+        // Event listeners
+        document.getElementById('refreshBtn').addEventListener('click', refreshGpsPositions);
+        document.getElementById('toggleTracking').addEventListener('click', toggleTracking);
+        document.getElementById('centerMapBtn').addEventListener('click', () => map.setView([34.5553, 69.2075], 10));
+        document.getElementById('showAllCarsBtn').addEventListener('click', fitMapToMarkers);
+        document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+            Object.values(carPaths).forEach(path => path.setLatLngs([]));
+            showAlert('info', 'Path history cleared');
+        });
+
+        document.getElementById('autoRefresh').addEventListener('change', function() {
+            if (this.checked && isTracking) {
+                autoRefreshInterval = setInterval(refreshGpsPositions, 30000);
+            } else if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+        });
+
+        // Initialize everything
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+            initSignalR();
+            loadInitialCars();
+            checkSystemHealth();
+
+            // Check health every 30 seconds
+            setInterval(checkSystemHealth, 30000);
+        });
     </script>
-}
+</body>
+</html>

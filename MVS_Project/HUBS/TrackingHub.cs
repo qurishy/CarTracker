@@ -30,5 +30,12 @@ namespace MVS_Project.HUBS
         {
             await Clients.Group($"cars_{carId}").SendAsync("ReceiveCarUpdate", carId, lat, lng);
         }
+
+
+        public async Task SendPositionUpdate(int carId, double latitude, double longitude)
+        {
+            await Clients.All.SendAsync("PositionUpdated", carId, latitude, longitude, DateTime.UtcNow);
+        }
+
     }
 }
