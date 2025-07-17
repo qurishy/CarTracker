@@ -375,27 +375,27 @@ namespace MVS_Project.Controllers
         private async Task<object> GetActiveCarData()
         {
             return await _context.Car
-                .Include(c => c.LocationHistory)
-                .Select(c => new
+        .Include(c => c.LocationHistory)
+        .Select(c => new
+        {
+            // Ensure these match your JSON structure
+            c.Id,
+            c.LicensePlate,
+            c.Make,
+            c.Model,
+            c.LastTracked,
+            IsActive = c.LastTracked > DateTime.UtcNow.AddHours(-1),
+            LastPosition = c.LocationHistory
+                .OrderByDescending(l => l.Timestamp)
+                .Select(l => new
                 {
-                    c.Id,
-                    c.LicensePlate,
-                    c.Make,
-                    c.Model,
-                    c.LastTracked,
-                    IsActive = c.LastTracked > DateTime.UtcNow.AddHours(-1),
-                    LastPosition = c.LocationHistory
-                        .OrderByDescending(l => l.Timestamp)
-                        .Select(l => new
-                        {
-                            l.Latitude,
-                            l.Longitude,
-                            l.Timestamp
-                        })
-                        .FirstOrDefault(),
-                    LocationCount = c.LocationHistory.Count()
+                    l.Latitude,
+                    l.Longitude
                 })
-                .ToListAsync();
+                .FirstOrDefault(),
+            LocationCount = c.LocationHistory.Count()
+        })
+        .ToListAsync();
         }
 
         #endregion

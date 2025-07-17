@@ -63,25 +63,20 @@
 async function loadVehicleList() {
     try {
         console.log("Starting loadVehicleList...");
-
-        // 1. Fetch data
         const response = await fetch('/Map/GetActiveCars');
         console.log("Response status:", response.status);
 
-        // 2. Check for HTTP errors
         if (!response.ok) {
             const errorText = await response.text();
             throw new Error(`HTTP ${response.status}: ${errorText}`);
         }
 
-        // 3. Parse JSON
         const vehicles = await response.json();
         console.log("Received vehicles data:", vehicles);
 
         const vehicleList = document.getElementById('vehicleList');
         vehicleList.innerHTML = '';
 
-        // 4. Check if we actually got an array
         if (!Array.isArray(vehicles)) {
             throw new Error(`Expected array but got ${typeof vehicles}`);
         }
@@ -91,52 +86,48 @@ async function loadVehicleList() {
             return;
         }
 
-        // 5. Process each vehicle
         vehicles.forEach(vehicle => {
             console.log("Processing vehicle:", vehicle);
 
-            // 6. Validate required properties
-            const requiredProps = ['Id', 'Make', 'Model', 'LicensePlate', 'LastTracked', 'IsActive'];
-            const missingProps = requiredProps.filter(prop => !(prop in vehicle));
+            // Handle different property naming cases
+            const id = vehicle.id || vehicle.Id;
+            const make = vehicle.make || vehicle.Make;
+            const model = vehicle.model || vehicle.Model;
+            const licensePlate = vehicle.licensePlate || vehicle.LicensePlate;
+            const lastTracked = vehicle.lastTracked || vehicle.LastTracked;
+            const isActive = vehicle.isActive || vehicle.IsActive;
 
-            if (missingProps.length > 0) {
-                console.error(`Vehicle ${vehicle.Id} missing properties:`, missingProps);
+            if (!id) {
+                console.error("Vehicle missing ID property:", vehicle);
                 return;
             }
 
             const vehicleDiv = document.createElement('div');
-            vehicleDiv.className = `vehicle-item ${vehicle.IsActive ? 'active' : 'inactive'}`;
-            vehicleDiv.id = `vehicle-${vehicle.Id}`;
-
-            // 7. Safely handle potentially missing LastPosition
-            const lastPositionInfo = vehicle.LastPosition
-                ? `Position: ${vehicle.LastPosition.Latitude}, ${vehicle.LastPosition.Longitude}`
-                : 'No position data';
+            vehicleDiv.className = `vehicle-item ${isActive ? 'active' : 'inactive'}`;
+            vehicleDiv.id = `vehicle-${id}`;
 
             vehicleDiv.innerHTML = `
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
-                        <h6 class="mb-1">${vehicle.Make} ${vehicle.Model}</h6>
-                        <small class="text-muted">${vehicle.LicensePlate}</small>
+                        <h6 class="mb-1">${make || 'N/A'} ${model || 'N/A'}</h6>
+                        <small class="text-muted">${licensePlate || 'N/A'}</small>
                     </div>
                     <div>
-                        <span class="badge ${vehicle.IsActive ? 'bg-success' : 'bg-danger'}">
-                            ${vehicle.IsActive ? 'Active' : 'Inactive'}
+                        <span class="badge ${isActive ? 'bg-success' : 'bg-danger'}">
+                            ${isActive ? 'Active' : 'Inactive'}
                         </span>
                     </div>
                 </div>
                 <div class="mt-2">
                     <small class="text-muted">
-                        Last tracked: ${new Date(vehicle.LastTracked).toLocaleString()}
+                        Last tracked: ${lastTracked ? new Date(lastTracked).toLocaleString() : 'N/A'}
                     </small>
-                    <br>
-                    <small>${lastPositionInfo}</small>
                 </div>
                 <div class="mt-2">
-                    <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${vehicle.Id})">
+                    <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${id})">
                         <i class="fas fa-info"></i> Details
                     </button>
-                    <button class="btn btn-sm btn-outline-success" onclick="trackVehicleOnMap(${vehicle.Id})">
+                    <button class="btn btn-sm btn-outline-success" onclick="trackVehicleOnMap(${id})">
                         <i class="fas fa-map"></i> Track
                     </button>
                 </div>
@@ -145,7 +136,6 @@ async function loadVehicleList() {
             vehicleList.appendChild(vehicleDiv);
         });
 
-        // Update statistics
         updateStatistics(vehicles);
     } catch (error) {
         console.error('Error loading vehicle list:', error);
