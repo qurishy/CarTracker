@@ -172,31 +172,52 @@ async function loadRecentHistory() {
     try {
         const response = await fetch('/Map/GetAllCarsHistory');
         const historyData = await response.json();
+        console.log("History API response:", historyData); // Debugging
 
         const tbody = document.getElementById('historyTableBody');
         tbody.innerHTML = '';
 
-        // 1. Check if historyData.data exists and is an array
-        if (!historyData.data || !Array.isArray(historyData.data) || historyData.data.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No recent history found</td></tr>';
+        // 1. Check if we have valid data structure
+        if (!historyData || !historyData.data || !Array.isArray(historyData.data)) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Invalid data format</td></tr>';
             return;
         }
 
-        historyData.data.forEach(car => {
-            // 2. Safely handle missing Locations array
-            const locations = Array.isArray(car.Locations) ? car.Locations : [];
+        // 2. Process each car
+        let hasData = false;
 
-            // 3. Take only the first 5 locations
+        historyData.data.forEach(car => {
+            // 3. Safely handle locations - use both PascalCase and camelCase
+            const locations = Array.isArray(car.Locations) ? car.Locations :
+                Array.isArray(car.locations) ? car.locations : [];
+
+            // 4. Only process if we have locations
+            if (locations.length === 0) return;
+
+            hasData = true;
+
+            // 5. Take max 5 locations
             locations.slice(0, 5).forEach(location => {
                 const row = document.createElement('tr');
+
+                // 6. Safely access properties with fallbacks
+                const carId = car.CarId || car.carId;
+                const make = car.Make || car.make;
+                const model = car.Model || car.model;
+                const licensePlate = car.LicensePlate || car.licensePlate;
+
                 row.innerHTML = `
-                    <td>${car.Make || 'N/A'} ${car.Model || 'N/A'}</td>
-                    <td>${car.LicensePlate || 'N/A'}</td>
-                    <td>${location.Latitude?.toFixed(6) || 'N/A'}, ${location.Longitude?.toFixed(6) || 'N/A'}</td>
-                    <td>${location.Timestamp ? new Date(location.Timestamp).toLocaleString() : 'N/A'}</td>
+                    <td>${make || 'N/A'} ${model || 'N/A'}</td>
+                    <td>${licensePlate || 'N/A'}</td>
+                    <td>
+                        ${location.Latitude?.toFixed(6) || location.latitude?.toFixed(6) || 'N/A'}, 
+                        ${location.Longitude?.toFixed(6) || location.longitude?.toFixed(6) || 'N/A'}
+                    </td>
+                    <td>${location.Timestamp ? new Date(location.Timestamp).toLocaleString() :
+                        location.timestamp ? new Date(location.timestamp).toLocaleString() : 'N/A'}</td>
                     <td><span class="badge bg-success">Active</span></td>
                     <td>
-                        <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${car.CarId})">
+                        <button class="btn btn-sm btn-outline-primary" onclick="showVehicleDetails(${carId})">
                             <i class="fas fa-eye"></i>
                         </button>
                     </td>
@@ -204,13 +225,16 @@ async function loadRecentHistory() {
                 tbody.appendChild(row);
             });
         });
+
+        // 7. Handle empty results
+        if (!hasData) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No location data available</td></tr>';
+        }
     } catch (error) {
         console.error('Error loading recent history:', error);
-        document.getElementById('historyTableBody').innerHTML =
-            '<tr><td colspan="6" class="text-center text-danger">Failed to load history</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger">Failed to load history</td></tr>';
     }
 }
-
     // Check system health
     async function checkSystemHealth() {
         try {
@@ -284,7 +308,7 @@ async function loadRecentHistory() {
 
     // Track vehicle on map
     function trackVehicleOnMap(vehicleId) {
-        window.open(`/Map/Index?trackVehicle=${vehicleId}`, '_blank');
+        window.open(`/Map/Index?trackVehicle=${vehicleId}`, '_blank');//// open in new tab in Index
     }
 
     // Refresh GPS data
@@ -417,10 +441,76 @@ async function loadRecentHistory() {
     }
 
     // Export history
-    function exportHistory() {
-        // This would typically generate a CSV or Excel file
-        showNotification('Export functionality would be implemented here', 'info');
+async function exportHistory() {
+    try {
+        showNotification('Preparing export...', 'info');
+        console.log("Fetching history data...");
+
+        const response = await fetch('/Map/GetAllCarsHistory?startDate=2000-01-01&endDate=2100-01-01');
+        const historyData = await response.json();
+        console.log("API Response:", historyData);
+
+        if (!historyData?.data?.length) {
+            showNotification('No data available to export', 'warning');
+            return;
+        }
+
+        console.log(`Processing ${historyData.data.length} vehicles...`);
+        let csvContent = "Vehicle,License Plate,Make,Model,Latitude,Longitude,Timestamp,Status\n";
+        let vehiclesWithLocations = 0;
+        let totalLocations = 0;
+
+        historyData.data.forEach(car => {
+            // Use camelCase for all properties
+            const carId = car.carId || car.CarId;
+            console.log(`Processing vehicle ${carId}`);
+
+            // Access locations with camelCase
+            const locations = Array.isArray(car.locations) ? car.locations : [];
+            console.log(`Found ${locations.length} locations for this vehicle`, locations);
+
+            const make = car.make || car.Make || 'Unknown';
+            const model = car.model || car.Model || 'Unknown';
+            const licensePlate = car.licensePlate || car.LicensePlate || 'Unknown';
+
+            if (locations.length > 0) {
+                vehiclesWithLocations++;
+                locations.forEach(location => {
+                    totalLocations++;
+                    // Use camelCase for location properties
+                    const lat = location.latitude ?? location.Latitude ?? '';
+                    const lng = location.longitude ?? location.Longitude ?? '';
+                    const timestamp = location.timestamp ?? location.Timestamp ?? '';
+
+                    console.log(`Adding location: ${lat}, ${lng} at ${timestamp}`);
+                    csvContent += `"${make} ${model}",${licensePlate},${make},${model},${lat},${lng},"${timestamp}",Active\n`;
+                });
+            }
+        });
+
+        console.log(`Summary: ${vehiclesWithLocations} vehicles with locations, ${totalLocations} total locations`);
+
+        if (totalLocations === 0) {
+            showNotification('No location data available to export', 'warning');
+            return;
+        }
+
+        // Create and trigger download
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `vehicle_locations_${new Date().toISOString().slice(0, 10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showNotification(`Exported ${totalLocations} location records`, 'success');
+    } catch (error) {
+        console.error('Export failed:', error);
+        showNotification('Export failed: ' + error.message, 'error');
     }
+}
 
     // Refresh functions
     async function refreshDashboard() {
@@ -449,6 +539,11 @@ async function loadRecentHistory() {
             notificationsEnabled ? 'success' : 'warning'
         );
     });
+// At the start of loadRecentHistory()
+document.getElementById('loadingRow').style.display = 'table-row';
+
+// At the end of the function (in finally block)
+document.getElementById('loadingRow').style.display = 'none';
 
     // Initialize dashboard
     document.addEventListener('DOMContentLoaded', function() {
