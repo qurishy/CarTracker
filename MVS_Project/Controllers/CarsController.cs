@@ -17,72 +17,68 @@ public class CarsController : Controller
 
     public IActionResult Index()
     {
-        var activeCars = GetActiveCars();
-        return View(activeCars);
+        return View();
     }
 
-    [HttpGet]
-    public async Task<IActionResult> GetActiveCars()
-    {
-        var activecars = await _dbcontext.Car
-        .Select(car => new
-        {
-            car.Id,
-            car.LicensePlate,
-            car.Make,
-            car.Model,
-            car.LastTracked,
+    // [HttpGet]
+    // public async Task<IActionResult> GetActiveCars()
+    // {
+    //     var activecars = await _dbcontext.Car
+    //     .Select(car => new
+    //     {
+    //         car.Id,
+    //         car.LicensePlate,
+    //         car.Make,
+    //         car.Model,
+    //         car.LastTracked,
 
-            Location = _dbcontext.LocationHistory
-            .Where(loc => loc.CarId == car.Id)
-            .OrderByDescending(loc => loc.Timestamp)
-            .Select(loc => new { loc.Latitude, loc.Longitude })
-            .FirstOrDefault()
-        })
-        .ToListAsync();
+    //         Location = _dbcontext.LocationHistory
+    //         .Where(loc => loc.CarId == car.Id)
+    //         .OrderByDescending(loc => loc.Timestamp)
+    //         .Select(loc => new { loc.Latitude, loc.Longitude })
+    //         .FirstOrDefault()
+    //     })
+    //     .ToListAsync();
 
-        return Json(activecars);
-    }
+    //     return Json(activecars);
+    // }
 
-    public async Task<IActionResult> GetCar(int id)
-    {
-        var car = await _dbcontext.Car
-        .Where(c => c.Id == id)
-        .Select(c => new
-        {
-            c.Id,
-            c.LicensePlate,
-            c.Make,
-            c.Model,
-            c.LastTracked,
-            LocationHistory = c.LocationHistory
-            .OrderByDescending(l => l.Timestamp)
-            .Select(l => new
-            {
-                l.Latitude,
-                l.Longitude,
-                l.Timestamp
-            })
-            .ToList(),
-            LastPosition = c.LocationHistory
-            .OrderByDescending(l => l.Timestamp)
-            .Select(l => new
-            {
-                l.Latitude,
-                l.Longitude
-            })
-            .FirstOrDefault(),
-            TotalLocation = c.LocationHistory.Count()
-        })
-        .FirstOrDefaultAsync();
+    // public async Task<IActionResult> GetCar(int id)
+    // {
+    //     var car = await _dbcontext.Car
+    //                 .Include(c => c.LocationHistory)
+    //                 .Where(c => c.Id == id)
+    //                 .Select(c => new
+    //                 {
+    //                     c.Id,
+    //                     c.LicensePlate,
+    //                     c.Make,
+    //                     c.Model,
+    //                     c.LastTracked,
+    //                     LastPosition = c.LocationHistory
+    //                         .OrderByDescending(l => l.Timestamp)
+    //                         .Select(l => new
+    //                         {
+    //                             l.Latitude,
+    //                             l.Longitude,
+    //                             l.Timestamp
+    //                         })
+    //                         .FirstOrDefault(),
+    //                     TotalLocations = c.LocationHistory.Count(),
+    //                     FirstTracked = c.LocationHistory
+    //                         .OrderBy(l => l.Timestamp)
+    //                         .Select(l => l.Timestamp)
+    //                         .FirstOrDefault()
+    //                 })
+    //                 .FirstOrDefaultAsync();
 
-        if (car == null)
-        {
-            return NotFound();
-        }
+    //     if (car == null)
+    //     {
+    //         return NotFound($"Car with ID {id} not found");
+    //     }
 
-        return Json(car);
-    }
+    //     return Json(car);
+    // }
 
-    
+
 }

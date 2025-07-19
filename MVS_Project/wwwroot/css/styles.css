@@ -1,40 +1,101 @@
 #map {
-    height: 70vh;
+     height: 83vh;
     width: 100%;
-    border-radius: 8px;
+    border-radius: 10px;
+    
 }
 
-.car-panel {
-    height: 70vh;
+
+/* Card styling */
+.card {
+    border-radius: 1rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    transition: box-shadow 0.3s ease-in-out;
+}
+
+.card:hover {
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+/* Card Header */
+.card-header {
+    font-weight: 600;
+    font-size: 1.25rem;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    color: white;
+    border-top-left-radius: 1rem;
+    border-top-right-radius: 1rem;
+    padding: 1rem 1.25rem;
+}
+
+/* Vehicle list container */
+#carsList {
+    max-height: 83vh;
     overflow-y: auto;
-    background: #f8f9fa;
-    border-radius: 8px;
-    padding: 15px;
 }
 
-.car-card {
+/* Individual list items */
+.list-group-item {
+    border: none;
+    padding: 0.5rem 0.8rem;
+    transition: background-color 0.25s ease, transform 0.2s ease;
+    font-weight: 500;
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.list-group-item:hover {
+    background-color: #f0f8ff;
+    transform: translateX(4px);
     cursor: pointer;
+    color: #558355;
+}
+
+/* Spinner alignment */
+.spinner-border {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.text-center span {
+    display: block;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+/* Scrollbar styling (optional) */
+#carsList::-webkit-scrollbar {
+    width: 4px;
+}
+
+#carsList::-webkit-scrollbar-thumb {
+    background-color: #ccc;
+    border-radius: 4px;
+}
+
+
+.car-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
     margin-bottom: 10px;
-    border-left: 4px solid #0d6efd;
-    transition: all 0.3s;
-    padding: 10px;
-    background: white;
-    border-radius: 5px;
+    padding: 12px;
+    background-color: #fff;
+    transition: box-shadow 0.2s;
 }
 
-.car-card:hover {
-    background: #e9ecef;
+.car-item:hover {
+    background-color: #cfcfcf;
+    box-shadow: 0 0 8px rgba(0, 0, 0, 0.05);
 }
 
-.car-card.active {
-    border-left-color: #198754;
-    background: #e8f5e9;
+.car-item.active {
+    border-left: 4px solid #08f804;
+    background-color: #1fd78d46;
 }
 
-.car-icon {
-    font-size: 24px;
-    margin-right: 10px;
-}
+
+
 
 .status-badge {
     font-size: 0.8em;
