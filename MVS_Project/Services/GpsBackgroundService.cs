@@ -1,6 +1,7 @@
-﻿using MVS_Project.Services;
+﻿// Services/GpsBackgroundService.cs
 using Microsoft.AspNetCore.SignalR;
 using MVS_Project.HUBS;
+using MVS_Project.Services;
 
 namespace MVS_Project.Services
 {
@@ -10,8 +11,10 @@ namespace MVS_Project.Services
         private readonly ILogger<GpsBackgroundService> _logger;
         private readonly IConfiguration _config;
 
-        public GpsBackgroundService(IServiceProvider serviceProvider,
-            ILogger<GpsBackgroundService> logger, IConfiguration config)
+        public GpsBackgroundService(
+            IServiceProvider serviceProvider,
+            ILogger<GpsBackgroundService> logger,
+            IConfiguration config)
         {
             _serviceProvider = serviceProvider;
             _logger = logger;
@@ -46,6 +49,10 @@ namespace MVS_Project.Services
                         }
 
                         _logger.LogInformation("Fetched and broadcasted {Count} GPS positions", positions.Count());
+                    }
+                    else
+                    {
+                        _logger.LogInformation("No new GPS positions found");
                     }
                 }
                 catch (Exception ex)

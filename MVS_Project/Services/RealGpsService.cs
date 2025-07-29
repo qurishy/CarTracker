@@ -1,4 +1,5 @@
-﻿using MVS_Project.Data;
+﻿// Services/RealGpsService.cs
+using MVS_Project.Data;
 using MVS_Project.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
@@ -12,8 +13,11 @@ namespace MVS_Project.Services
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<RealGpsService> _logger;
 
-        public RealGpsService(HttpClient httpClient, IConfiguration config,
-            IServiceProvider serviceProvider, ILogger<RealGpsService> logger)
+        public RealGpsService(
+            HttpClient httpClient,
+            IConfiguration config,
+            IServiceProvider serviceProvider,
+            ILogger<RealGpsService> logger)
         {
             _httpClient = httpClient;
             _config = config;
@@ -25,20 +29,23 @@ namespace MVS_Project.Services
         {
             try
             {
-                var baseUrl = _config["GpsApi:BaseUrl"] ?? "http://localhost:5159"; // Your GPS API URL
-                var response = await _httpClient.GetAsync($"{baseUrl}/api/gps/positions/{countryCode}");
+                var baseUrl = _config["GpsApi:BaseUrl"] ?? "http://localhost:5159";
+                var endpoint = $"{baseUrl}/api/gps/positions/{countryCode}";
+
+                _logger.LogInformation("Fetching GPS positions from {Endpoint}", endpoint);
+
+                var response = await _httpClient.GetAsync(endpoint);
 
                 if (response.IsSuccessStatusCode)
                 {
                     var jsonContent = await response.Content.ReadAsStringAsync();
-                    var positions = JsonSerializer.Deserialize<List<CarPosition>>(jsonContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
+                    var positions = JsonSerializer.Deserialize<List<CarPosition>>(
+                        jsonContent,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
 
                     if (positions != null && positions.Any())
                     {
-                        // Save to database
                         await SavePositionsToDatabase(positions);
                         return positions;
                     }
@@ -61,19 +68,22 @@ namespace MVS_Project.Services
             try
             {
                 var baseUrl = _config["GpsApi:BaseUrl"] ?? "http://localhost:5159";
-                var response = await _httpClient.GetAsync($"{baseUrl}/api/gps/car/{carId}/position?countryCode={countryCode}");
+                var endpoint = $"{baseUrl}/api/gps/car/{carId}/position?countryCode={countryCode}";
+
+                _logger.LogInformation("Fetching position for car {CarId} from {Endpoint}", carId, endpoint);
+
+                var response = await _httpClient.GetAsync(endpoint);
 
                 if (response.IsSuccessStatusCode)
                 {
                     var jsonContent = await response.Content.ReadAsStringAsync();
-                    var position = JsonSerializer.Deserialize<CarPosition>(jsonContent, new JsonSerializerOptions
-                    {
-                        PropertyNameCaseInsensitive = true
-                    });
+                    var position = JsonSerializer.Deserialize<CarPosition>(
+                        jsonContent,
+                        new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    );
 
                     if (position != null)
                     {
-                        // Save single position to database
                         await SavePositionsToDatabase(new[] { position });
                         return position;
                     }
@@ -94,37 +104,37 @@ namespace MVS_Project.Services
 
             try
             {
+                var carIds = positions.Select(p => p.CarId).Distinct().ToList();
+                var existingCars = await dbContext.Car
+                    .Where(c => carIds.Contains(c.Id))
+                    .ToDictionaryAsync(c => c.Id);
+
                 foreach (var position in positions)
                 {
-                    // Check if car exists, if not create it
-                    var car = await dbContext.Car.FindAsync(position.CarId);
-                    if (car == null)
+                    if (!existingCars.TryGetValue(position.CarId, out var car))
                     {
                         car = new Cars
                         {
-                            //Id = position.CarId,
                             LicensePlate = $"AF-{position.CarId:D4}",
                             Make = "Unknown",
                             Model = "Unknown",
-                            LastTracked = DateTime.UtcNow
+                            LastTracked = position.Timestamp
                         };
                         dbContext.Car.Add(car);
+                        existingCars[position.CarId] = car;
                     }
                     else
                     {
-                        car.LastTracked = DateTime.UtcNow;
+                        car.LastTracked = position.Timestamp;
                     }
 
-                    // Add location history
-                    var locationHistory = new LocationHistory
+                    dbContext.LocationHistory.Add(new LocationHistory
                     {
                         CarId = position.CarId,
                         Latitude = position.Latitude,
                         Longitude = position.Longitude,
                         Timestamp = position.Timestamp
-                    };
-
-                    dbContext.LocationHistory.Add(locationHistory);
+                    });
                 }
 
                 await dbContext.SaveChangesAsync();

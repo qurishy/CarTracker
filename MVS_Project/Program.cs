@@ -69,6 +69,8 @@ app.UseAuthorization();
 
 app.MapStaticAssets();
 
+
+// Keep the existing default route
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=Map}/{action=Dashboard}/{id?}");

@@ -1,328 +1,901 @@
-﻿@model dynamic
-@{
-    ViewData["Title"] = "Vehicle Tracking Map";
-    var initialCars = ViewBag.InitialCars as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
+﻿@{
+    ViewData["Title"] = "Vehicle Tracker";
+    int? carId = ViewBag.CarId;
 }
 
 <!DOCTYPE html>
 <html>
-
 <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@ViewData["Title"]</title>
-
-    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
-    <link rel="stylesheet"
-        href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/themes/base/jquery-ui.min.css" />
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-    <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" />
     <style>
         #map {
-            height: 500px;
-            width: 100%;
-            z-index: 1;
-        }
-
-        .control-panel {
-            background: white;
-            padding: 20px;
+            height: 80vh;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
+            min-height: 500px;
         }
 
-        .car-info {
-            background: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            border-left: 4px solid #007bff;
+        .car-marker {
+            filter: hue-rotate(200deg);
+            width: 30px !important;
+            height: 30px !important;
         }
 
-        .car-info.active {
-            border-left-color: #28a745;
-            background: #f8fff8;
+        .history-line {
+            color: #0d6efd;
+            weight: 4;
         }
 
-        .car-info.inactive {
-            border-left-color: #dc3545;
-            background: #fff8f8;
+        .realtime-line {
+            color: #dc3545;
+            weight: 3;
+            dashArray: '5,5';
         }
 
-        .status-badge {
-            font-size: 0.8em;
-            padding: 4px 8px;
-            border-radius: 12px;
+        .route-line {
+            color: #0d6efd;
+            weight: 5;
+            opacity: 0.8;
+            dashArray: '5,5';
         }
 
-        .status-online {
-            background: #28a745;
-            color: white;
+        .card {
+            margin-top: 1rem;
         }
 
-        .status-offline {
-            background: #dc3545;
-            color: white;
+        .spinner-border {
+            display: inline-block;
+            width: 2rem;
+            height: 2rem;
         }
 
-        .loading-spinner {
-            display: none;
-            text-align: center;
-            padding: 20px;
-        }
-
-        .connection-status {
-            position: fixed;
-            top: 20px;
-            right: 20px;
+        #routeControls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
             z-index: 1000;
-            padding: 10px 15px;
-            border-radius: 5px;
-            color: white;
-            font-weight: bold;
-        }
-
-        .connection-status.connected {
-            background: #28a745;
-        }
-
-        .connection-status.disconnected {
-            background: #dc3545;
-        }
-
-        .car-list {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .btn-group-custom {
-            margin-bottom: 15px;
-        }
-
-        .alert-custom {
-            margin-top: 15px;
-        }
-
-        /* Add to your existing CSS */
-        .ui-autocomplete {
-            background-color: white;
-            border: 1px solid #ced4da;
-            border-radius: 0.25rem;
-            list-style-type: none;
-            padding: 0;
-            margin: 0;
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        .ui-autocomplete .ui-menu-item {
-            padding: 8px 12px;
-            cursor: pointer;
-        }
-
-        .ui-autocomplete .ui-menu-item:hover {
-            background-color: #f8f9fa;
-        }
-
-        .ui-autocomplete .ui-state-active {
-            background-color: #007bff;
-            color: white;
-            border: none;
-        }
-
-        /* Make the routing control look better */
-        .leaflet-routing-container {
             background: white;
             padding: 10px;
             border-radius: 5px;
-            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
-            max-height: 300px;
-            overflow-y: auto;
+            box-shadow: 0 0 10px rgba(0,0,0,0.2);
         }
 
-        .leaflet-routing-alt {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-
-        /* Add to your existing CSS */
-        .custom-icon {
-            text-align: center;
-            line-height: 30px;
-        }
-
-        .leaflet-routing-container {
+        #routeInfo {
             display: none;
-            /* Hide the default routing container */
-        }
-
-        /* Style for autocomplete dropdown */
-        .ui-autocomplete {
-            background-color: white;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            max-height: 200px;
-            overflow-y: auto;
-            z-index: 1000;
-        }
-
-        .ui-menu-item {
-            padding: 8px 12px;
-            cursor: pointer;
-        }
-
-        .ui-menu-item:hover {
-            background-color: #f5f5f5;
-        }
-
-        .ui-state-active {
-            background-color: #007bff;
-            color: white;
+            margin-top: 10px;
         }
     </style>
 </head>
-
 <body>
     <div class="container-fluid">
         <div class="row">
-            <!-- Left Panel - Controls -->
-            <div class="col-md-3">
-                <div class="control-panel">
-                    <h4><i class="fas fa-car"></i> Vehicle Tracking</h4>
-                    <hr>
-
-                    <!-- Control Buttons -->
-                    <div class="btn-group-custom">
-                        <button id="refreshBtn" class="btn btn-primary btn-sm me-2">
-                            <i class="fas fa-sync"></i> Refresh GPS
-                        </button>
-                        <button id="toggleTracking" class="btn btn-success btn-sm">
-                            <i class="fas fa-play"></i> Start Tracking
-                        </button>
+            <!-- Car Details Panel -->
+            <div class="col-md-4" id="carDetailsPanel">
+                <div class="card mt-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 id="carHeader">Vehicle Details</h5>
                     </div>
+                    <div class="card-body">
+                        <div id="carDetails">
 
-                    <!-- Auto-refresh toggle -->
-                    <div class="form-check mb-3">
-                        <input class="form-check-input" type="checkbox" id="autoRefresh">
-                        <label class="form-check-label" for="autoRefresh">
-                            Auto-refresh (30s)
-                        </label>
-                    </div>
+                            <!-- Add this inside the car details card body, after the existing content -->
+                           
+                            <div class="mt-3">
+                                <h6>Saved Routes</h6>
+                                <div id="savedRoutesList">
+                                    <!-- Saved routes will be displayed here -->
+                              
+                            @if (carId.HasValue)
+                            {
+                                <div class="text-center">
+                                    <div class="spinner-border" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p>Loading vehicle data...</p>
+                                </div>
 
-                    <!-- Loading Spinner -->
-                    <div id="loadingSpinner" class="loading-spinner">
-                        <div class="spinner-border text-primary" role="status">
-                            <span class="visually-hidden">Loading...</span>
+
+                            }
+                            else
+                            {
+                                <p class="text-muted">No vehicle selected. Select a vehicle from the dashboard.</p>
+                            } 
+                            </div>
+                            
                         </div>
-                        <p>Loading vehicle data...</p>
-                    </div>
-                </div>
-
-                <!-- System Status -->
-                <div class="control-panel">
-                    <h5><i class="fas fa-heartbeat"></i> System Status</h5>
-                    <div id="systemStatus">
-                        <p><span id="dbStatus" class="badge bg-secondary">Checking...</span> Database</p>
-                        <p><span id="gpsStatus" class="badge bg-secondary">Checking...</span> GPS API</p>
-                        <p><span id="signalrStatus" class="badge bg-secondary">Connecting...</span> Real-time Updates
-                        </p>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Right Panel - Map -->
-            <div class="col-md-9">
-                <!-- Route Planner Section -->
-                <div class="control-panel mt-3">
-                    <h5><i class="fas fa-route"></i> Route Planner</h5>
-                    <div class="mb-3">
-                        <label for="origin" class="form-label">Origin:</label>
-                        <input type="text" id="origin" class="form-control" placeholder="Enter starting point"
-                            list="originSuggestions">
-                        <datalist id="originSuggestions"></datalist>
-                    </div>
-                    <div class="mb-3">
-                        <label for="destination" class="form-label">Destination:</label>
-                        <input type="text" id="destination" class="form-control" placeholder="Enter destination"
-                            list="destinationSuggestions">
+            <!-- Map Container -->
+            <div class="col-md-8 position-relative">
+                <div id="map"></div>
+
+                <!-- Route Controls (hidden by default) -->
+                <div id="routeControls" style="display: none;">
+                    <div class="input-group mb-2">
+                        <input type="text" id="destination" class="form-control" placeholder="Destination" list="destinationSuggestions">
                         <datalist id="destinationSuggestions"></datalist>
+                        <button id="findRouteBtn" class="btn btn-primary">Find Route</button>
                     </div>
-                    <button id="findRouteBtn" class="btn btn-primary btn-sm">
-                        <i class="fas fa-search"></i> Find Route
-                    </button>
-                    <button id="clearRouteBtn" class="btn btn-danger btn-sm">
-                        <i class="fas fa-eraser">Clear Route</i>
-                    </button>
-                    <div id="routeInfo" class="mt-3" style="display: none;"></div>
-                </div>
-
-                <div class="control-panel">
-                    <div id="map"></div>
-
-                    <!-- Map Controls -->
-                    <div class="mt-3">
-                        <button id="centerMapBtn" class="btn btn-outline-primary btn-sm">
-                            <i class="fas fa-crosshairs"></i> Center Map
-                        </button>
-                        <button id="showAllCarsBtn" class="btn btn-outline-info btn-sm">
-                            <i class="fas fa-eye"></i> Show All Cars
-                        </button>
-                        <button id="clearHistoryBtn" class="btn btn-outline-warning btn-sm">
-                            <i class="fas fa-eraser"></i> Clear History
-                        </button>
-                    </div>
-
-                    <!-- Alert Area -->
-                    <div id="alertArea" class="alert-custom"></div>
+                    <div id="routeInfo"></div>
+                    <button id="clearRouteBtn" class="btn btn-sm btn-danger mt-2">Clear Route</button>
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Connection Status Indicator -->
-    <div id="connectionStatus" class="connection-status disconnected">
-        <i class="fas fa-wifi"></i> Connecting...
-    </div>
-
-    <!-- Car Details Modal -->
-    <div class="modal fade" id="carDetailsModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">Vehicle Details</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body" id="carDetailsBody">
-                    <!-- Car details will be loaded here -->
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                    <button type="button" class="btn btn-primary" id="trackCarBtn">Track Vehicle</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Hidden element for initial cars data -->
-    <script id="initialCarsData" type="application/json">@Html.Raw(Json.Serialize(initialCars))</script>
-
-    <!-- Scripts -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
-
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+   
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.13.2/jquery-ui.min.js"></script>
-    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
-    <!-- Our JavaScript file -->
-    <script src="~/js/index.js"></script>
-</body>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+   
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@7.0.5/dist/browser/signalr.min.js"></script>
+  
+    <script>
+        // Fallback if CDN fails
+        if (typeof signalR === 'undefined') {
+            document.write('<script src="/lib/microsoft/signalr/dist/browser/signalr.min.js"><\/script>');
+        }
+    </script>
+
+    <script>
+        // Global variables
+        let map, carMarker, historyPolyline, realtimePolyline;
+        let currentCarId = @(carId.HasValue? carId.Value: 0);
+        let signalRConnection;
+        let routeLine = null;
+        let routeMarkers = [];
+        const ORS_API_KEY = 'eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YzU1OGVlODQyNzQ5Yzc4MmE3MDc3ZjcwZGYyMzMyIiwiaCI6Im11cm11cjY0In0='; // Replace with your actual API key
+
+        $(document).ready(function () {
+            initializeMap();
+            initRouting();
+
+            if (currentCarId > 0) {
+                fetchCarDetails();
+                initializeSignalRConnection();
+            }
+        });
+
+        // Initialize Leaflet map
+        function initializeMap() {
+            map = L.map('map').setView([34.5, 69.2], 13);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // Fetch car details from server
+        async function fetchCarDetails() {
+            try {
+                const response = await fetch(`/Map/GetCar?id=${currentCarId}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                const car = await response.json();
+                renderCarDetails(car);
+                fetchCarLocations();
+            } catch (error) {
+                console.error('Failed to load car details:', error);
+                $('#carDetails').html(`<div class="alert alert-danger">Error loading vehicle data: ${error.message}</div>`);
+            }
+        }
+
+        // Render car details in panel
+        function renderCarDetails(car) {
+            const lastPos = car.lastPosition || {};
+            const detailsHtml = `
+                <h4>${car.make} ${car.model}</h4>
+                <p><strong>License:</strong> ${car.licensePlate}</p>
+                <p><strong>Last Tracked:</strong> ${new Date(car.lastTracked).toLocaleString()}</p>
+                <p><strong>Location:</strong> ${lastPos.latitude?.toFixed(4)}, ${lastPos.longitude?.toFixed(4)}</p>
+                <p><strong>Total Points:</strong> ${car.totalLocations}</p>
+                <button id="showRouteBtn" class="btn btn-sm btn-primary mt-2">Show Route To...</button>
+                <hr>
+                <div class="location-history" id="locationHistory"></div>
+            `;
+            $('#carDetails').html(detailsHtml);
+            $('#carHeader').text(`${car.licensePlate} - ${car.make} ${car.model}`);
+
+            // Add event listener for route button
+            $('#showRouteBtn').click(function() {
+                $('#routeControls').toggle();
+            });
+        }
+
+        // Fetch location history from server
+        async function fetchCarLocations() {
+            try {
+                const response = await fetch(`/Map/GetCarLocations?vehicleId=${currentCarId}`);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+
+                const locations = await response.json();
+                plotLocationHistory(locations);
+            } catch (error) {
+                console.error('Error loading location history:', error);
+                $('#locationHistory').html(`<p class="text-danger">Failed to load travel history: ${error.message}</p>`);
+            }
+        }
+
+        // Plot location history on map
+        function plotLocationHistory(locations) {
+            // Clear existing layers
+            if (historyPolyline) map.removeLayer(historyPolyline);
+            if (realtimePolyline) map.removeLayer(realtimePolyline);
+            if (carMarker) map.removeLayer(carMarker);
+
+            // Convert to LatLng objects
+            const points = locations.map(loc => [loc.latitude, loc.longitude]);
+
+            // // Create history polyline
+            // historyPolyline = L.polyline(points, {
+            //     color: '#0d6efd',
+            //     weight: 4
+            // }).addTo(map);
+
+            // Create marker for latest position
+            if (points.length > 0) {
+                const lastPoint = points[0];
+                carMarker = L.marker(lastPoint, {
+                    icon: L.divIcon({
+                        className: 'car-marker',
+                        html: '<i class="fa-solid fa-car fa-2x"></i>',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map);
+
+                // Center map on vehicle
+                map.setView(lastPoint, 15);
+            }
+
+            // Create empty real-time polyline
+            realtimePolyline = L.polyline([], {
+                color: '#dc3545',
+                weight: 3,
+                dashArray: '5,5'
+            }).addTo(map);
+        }
+
+        // Initialize SignalR connection
+        function initializeSignalRConnection() {
+
+
+                    // Wait until SignalR is fully loaded
+        if (typeof signalR === 'undefined' || typeof signalR.HubConnectionBuilder === 'undefined') {
+            console.log("Waiting for SignalR library to load...");
+            setTimeout(initializeSignalRConnection, 1000);
+            return;
+        }
+
+
+            console.log("Initializing SignalR connection...");
+
+            // Check if SignalR is loaded
+            if (typeof signalR === 'undefined') {
+                console.error("SignalR client library not loaded. Retrying in 2 seconds...");
+                setTimeout(initializeSignalRConnection, 2000);
+                return;
+            }
+
+            // Build connection
+            signalRConnection = new signalR.HubConnectionBuilder()
+                .withUrl("/trackingHub")
+                .configureLogging(signalR.LogLevel.Information)
+                .withAutomaticReconnect([0, 2000, 5000, 10000, 30000]) // Progressive delays
+                .build();
+
+            // Setup handlers
+            signalRConnection.on("ReceiveCarUpdate", (carId, lat, lng) => {
+                console.log("Received position update for car:", carId);
+                if (carId === currentCarId) {
+                    updateCarPosition(lat, lng);
+                }
+            });
+
+            // Start connection
+            signalRConnection.start()
+                .then(() => {
+                    console.log("SignalR connected. Subscribing to car updates...");
+                    return signalRConnection.invoke("SubscribeToCars", [currentCarId]);
+                })
+                .then(() => {
+                    console.log("Successfully subscribed to car updates");
+                })
+                .catch(err => {
+                    console.error("SignalR connection error:", err);
+                    setTimeout(initializeSignalRConnection, 5000);
+                });
+
+            // Connection state handlers
+            signalRConnection.onclose(error => {
+                console.log("SignalR connection closed", error);
+            });
+
+            signalRConnection.onreconnecting(error => {
+                console.log("SignalR reconnecting...", error);
+            });
+
+            signalRConnection.onreconnected(connectionId => {
+                console.log("SignalR reconnected. New connection ID:", connectionId);
+                signalRConnection.invoke("SubscribeToCars", [currentCarId]);
+            });
+        }
+
+        // Update car position on map
+        function updateCarPosition(lat, lng) {
+            const newPos = [lat, lng];
+
+            // Update marker position
+            if (carMarker) {
+                carMarker.setLatLng(newPos);
+            } else {
+                carMarker = L.marker(newPos, {
+                    icon: L.divIcon({
+                        className: 'car-marker',
+                        html: '<i class="fa-solid fa-car fa-2x"></i>',
+                        iconSize: [30, 30]
+                    })
+                }).addTo(map);
+            }
+
+            // Add to real-time path
+            realtimePolyline.addLatLng(newPos);
+
+            // Update UI
+            $(`#carDetails p:contains("Location:")`).html(
+                `<strong>Location:</strong> ${lat.toFixed(4)}, ${lng.toFixed(4)}`
+            );
+
+            // Center map if needed
+            map.setView(newPos, map.getZoom());
+        }
+
+        // Initialize routing functionality
+        function initRouting() {
+            const destinationInput = document.getElementById('destination');
+
+            if (destinationInput) {
+                destinationInput.addEventListener('input', function () {
+                    fetchSuggestions(this.value, 'destinationSuggestions');
+                });
+
+                // Event listener for find route button
+                const findRouteBtn = document.getElementById('findRouteBtn');
+                if (findRouteBtn) {
+                    findRouteBtn.addEventListener('click', getRoute);
+                }
+
+                const clearRouteBtn = document.getElementById('clearRouteBtn');
+                if (clearRouteBtn) {
+                    clearRouteBtn.addEventListener('click', clearRoute);
+                }
+            } else {
+                console.warn("Routing controls not found. Routing functionality disabled.");
+            }
+        }
+
+        // Fetch autocomplete suggestions
+        function fetchSuggestions(query, datalistId) {
+            if (!query || query.length < 3) return;
+
+            fetch(`https://api.openrouteservice.org/geocode/autocomplete?api_key=${ORS_API_KEY}&text=${encodeURIComponent(query)}&boundary.country=AF`)
+                .then(res => res.json())
+                .then(data => {
+                    const list = document.getElementById(datalistId);
+                    list.innerHTML = '';
+                    if (data.features) {
+                        data.features.forEach(feature => {
+                            const option = document.createElement('option');
+                            option.value = feature.properties.label;
+                            list.appendChild(option);
+                        });
+                    }
+                })
+                .catch(err => {
+                    console.error('Autocomplete error:', err);
+                    showAlert('danger', 'Failed to fetch location suggestions');
+                });
+        }
+
+               // Updated route management functionality
+        // This replaces the existing getRoute() and saveRoute() functions in your HTML
+
+              // Updated route management functionality
+        // This replaces the existing getRoute() and saveRoute() functions in your HTML
+
+        // Get route between current car position and destination
+        async function getRoute() {
+            const destination = document.getElementById("destination").value;
+
+            if (!destination) {
+                showAlert("warning", "Please enter a destination");
+                return;
+            }
+
+            try {
+                // Show loading state
+                const routeInfo = document.getElementById('routeInfo');
+                routeInfo.style.display = 'block';
+                routeInfo.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div> Calculating route...</div>';
+
+                // Get current car position
+                if (!carMarker) {
+                    throw new Error('Cannot determine current vehicle position');
+                }
+                const fromCoord = carMarker.getLatLng();
+
+                // Geocode destination
+                const toGeo = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${ORS_API_KEY}&text=${encodeURIComponent(destination)}`)
+                    .then(res => res.json());
+
+                if (!toGeo.features || !toGeo.features.length) {
+                    throw new Error('Could not find location for destination');
+                }
+
+                const toCoord = toGeo.features[0].geometry.coordinates;
+
+                // Get route between coordinates
+                const body = {
+                    coordinates: [
+                        [fromCoord.lng, fromCoord.lat], // Current position
+                        toCoord // Destination
+                    ],
+                    instructions: false
+                };
+
+                const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                const apiUrl = 'https://api.openrouteservice.org/v2.1/directions/driving-car/geojson';
+
+                const route = await fetch(proxyUrl + apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': ORS_API_KEY,
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json, application/geo+json'
+                    },
+                    body: JSON.stringify(body)
+                }).then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    return res.json();
+                });
+
+                if (!route.features || !route.features.length) {
+                    throw new Error('No route features returned');
+                }
+
+                const summary = route.features[0].properties.summary;
+                const distanceKm = (summary.distance / 1000).toFixed(2);
+                const durationMin = (summary.duration / 60).toFixed(1);
+
+                // Format duration
+                function formatDuration(mins) {
+                    const hours = Math.floor(mins / 60);
+                    const minutes = Math.round(mins % 60);
+                    return `${hours > 0 ? hours + ' hr ' : ''}${minutes} min`;
+                }
+                const formattedTime = formatDuration(durationMin);
+
+                // Update route info display
+                routeInfo.innerHTML = `
+                    <div class="route-info">
+                        <h6>Route Information</h6>
+                        <p><i class="fas fa-arrows-alt-h"></i> <strong>Distance:</strong> ${distanceKm} km</p>
+                        <p><i class="fas fa-clock"></i> <strong>Duration:</strong> ${formattedTime}</p>
+                        <p><i class="fas fa-map-marker-alt"></i> <strong>To:</strong> ${destination}</p>
+                        <div class="text-success mt-2">
+                            <i class="fas fa-save"></i> Route automatically saved to database
+                        </div>
+                    </div>
+                `;
+
+                // Remove old route if exists
+                if (routeLine) {
+                    map.removeLayer(routeLine);
+                }
+
+                // Draw new polyline
+                routeLine = L.geoJSON(route, {
+                    style: {
+                        color: '#0d6efd',
+                        weight: 5,
+                        opacity: 0.8,
+                        dashArray: '5, 5'
+                    }
+                }).addTo(map);
+
+                // Add marker for destination
+                const endIcon = L.divIcon({
+                    className: 'custom-icon',
+                    html: '<i class="fas fa-map-marker-alt text-danger fa-2x"></i>',
+                    iconSize: [30, 30],
+                    iconAnchor: [15, 30]
+                });
+
+                // Remove any existing route markers
+                if (window.routeEndMarker) map.removeLayer(window.routeEndMarker);
+
+                window.routeEndMarker = L.marker([toCoord[1], toCoord[0]], { icon: endIcon })
+                    .addTo(map)
+                    .bindPopup(`<b>Destination</b><br>${destination}`);
+
+                // Fit map to route
+                map.fitBounds(routeLine.getBounds());
+
+                // Extract waypoints from route geometry
+                const routeGeometry = route.features[0].geometry;
+                const waypoints = extractWaypointsFromRoute(routeGeometry);
+
+                // Automatically save route to database
+                await saveRouteToDatabase(destination, fromCoord, toCoord, distanceKm, durationMin, waypoints);
+
+            } catch (error) {
+                console.error('Error in route calculation:', error);
+                const routeInfo = document.getElementById('routeInfo');
+                routeInfo.innerHTML = `<div class="alert alert-danger">Error calculating route: ${error.message}</div>`;
+
+                // Remove any existing route if there was an error
+                if (routeLine) {
+                    map.removeLayer(routeLine);
+                    routeLine = null;
+                }
+            }
+        }
+
+        // Extract waypoints from OpenRouteService route geometry
+        function extractWaypointsFromRoute(geometry) {
+            const waypoints = [];
+
+            if (geometry.type === 'LineString') {
+                // Sample waypoints from the route (every 10th point to avoid too many waypoints)
+                const coordinates = geometry.coordinates;
+                const sampleRate = Math.max(1, Math.floor(coordinates.length / 20)); // Max 20 waypoints
+
+                coordinates.forEach((coord, index) => {
+                    if (index % sampleRate === 0 || index === coordinates.length - 1) {
+                        waypoints.push({
+                            latitude: coord[1],
+                            longitude: coord[0],
+                            order: waypoints.length
+                        });
+                    }
+                });
+            }
+
+            return waypoints;
+        }
+
+        // Save route to database using your existing controller and models
+        async function saveRouteToDatabase(destination, fromCoord, toCoord, distanceKm, durationMin, waypoints) {
+            try {
+                // Show saving indicator in route info
+                const routeInfo = document.getElementById('routeInfo');
+                const existingContent = routeInfo.innerHTML;
+
+                // Add saving indicator
+                routeInfo.innerHTML = existingContent.replace(
+                    'Route automatically saved to database',
+                    '<i class="fas fa-spinner fa-spin"></i> Saving route to database...'
+                );
+
+                // Prepare the route data matching your RouteCar model structure
+                const routeData = {
+                    name: `Route to ${destination}`,
+                    carId: currentCarId,
+                    totalDistanceKm: parseFloat(distanceKm),
+                    estimatedTimeMinutes: parseFloat(durationMin),
+                    waypoints: waypoints.map(wp => ({
+                        latitude: wp.latitude,
+                        longitude: wp.longitude,
+                        order: wp.order
+                    }))
+                };
+
+                console.log('Saving route data:', routeData);
+
+                // Call your SaveRoute endpoint
+                const response = await fetch('/Map/SaveRoute', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(routeData)
+                });
+
+                if (!response.ok) {
+                    let errorMessage = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMessage = errorData.message || errorMessage;
+                    } catch (e) {
+                        // If response is not JSON, use status text
+                        errorMessage = response.statusText || errorMessage;
+                    }
+                    throw new Error(errorMessage);
+                }
+
+                const result = await response.json();
+                console.log('Route saved successfully:', result);
+
+                // Update UI to show success
+                routeInfo.innerHTML = existingContent.replace(
+                    '<i class="fas fa-spinner fa-spin"></i> Saving route to database...',
+                    `<i class="fas fa-check text-success"></i> Route saved successfully (ID: ${result.routeId}, ${result.waypointCount} waypoints)`
+                );
+
+                // Show success alert
+                showAlert('success', `Route "${routeData.name}" saved successfully! Route ID: ${result.routeId}, Waypoints: ${result.waypointCount}`);
+
+                // Refresh saved routes list
+                if (typeof loadSavedRoutes === 'function') {
+                    loadSavedRoutes(currentCarId).then(routes => {
+                        displaySavedRoutes(routes);
+                    });
+                }
+
+            } catch (error) {
+                console.error('Error saving route to database:', error);
+
+                // Update UI to show error
+                const routeInfo = document.getElementById('routeInfo');
+                const existingContent = routeInfo.innerHTML;
+                routeInfo.innerHTML = existingContent.replace(
+                    '<i class="fas fa-spinner fa-spin"></i> Saving route to database...',
+                    '<i class="fas fa-exclamation-triangle text-warning"></i> Failed to save route to database'
+                );
+
+                // Show error alert
+                showAlert('danger', 'Failed to save route to database: ' + error.message);
+            }
+        }
+
+        // Enhanced clear route function
+        function clearRoute() {
+            // Remove the route line if it exists
+            if (routeLine) {
+                map.removeLayer(routeLine);
+                routeLine = null;
+            }
+
+            // Remove destination marker if it exists
+            if (window.routeEndMarker) {
+                map.removeLayer(window.routeEndMarker);
+                window.routeEndMarker = null;
+            }
+
+            // Clear inputs and info
+            document.getElementById('destination').value = '';
+            document.getElementById('routeInfo').style.display = 'none';
+            document.getElementById('routeInfo').innerHTML = '';
+        }
+
+        // Enhanced alert function with better styling
+        function showAlert(type, message) {
+            // Create or get alert container
+            let alertContainer = document.getElementById('alertContainer');
+            if (!alertContainer) {
+                alertContainer = document.createElement('div');
+                alertContainer.id = 'alertContainer';
+                alertContainer.style.cssText = `
+                    position: fixed;
+                    top: 20px;
+                    right: 20px;
+                    z-index: 9999;
+                    min-width: 300px;
+                `;
+                document.body.appendChild(alertContainer);
+            }
+
+            // Create alert element
+            const alertId = 'alert_' + Date.now();
+            const alertHtml = `
+                <div id="${alertId}" class="alert alert-${type} alert-dismissible fade show" role="alert" style="margin-bottom: 10px;">
+                    <i class="fas fa-${type === 'success' ? 'check-circle' : type === 'danger' ? 'exclamation-circle' : 'info-circle'}"></i>
+                    ${message}
+                    <button type="button" class="btn-close" onclick="document.getElementById('${alertId}').remove()"></button>
+                </div>
+            `;
+
+            alertContainer.insertAdjacentHTML('afterbegin', alertHtml);
+
+            // Auto-remove after 5 seconds
+            setTimeout(() => {
+                const alertElement = document.getElementById(alertId);
+                if (alertElement) {
+                    alertElement.remove();
+                }
+            }, 5000);
+        }
+
+        // Additional utility function to load saved routes for a car
+        async function loadSavedRoutes(carId) {
+            try {
+                const response = await fetch(`/Map/car/${carId}/routes`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                console.log('Loaded saved routes:', result);
+
+                return result.routes || [];
+            } catch (error) {
+                console.error('Error loading saved routes:', error);
+                return [];
+            }
+        }
+
+        // Function to display saved routes in UI (optional)
+        function displaySavedRoutes(routes) {
+            const routesList = document.getElementById('savedRoutesList');
+            if (!routesList) return;
+
+            if (routes.length === 0) {
+                routesList.innerHTML = '<p class="text-muted">No saved routes found.</p>';
+                return;
+            }
+
+            const routesHtml = routes.map(route => `
+                <div class="card mb-2" data-route-id="${route.id}">
+                    <div class="card-body p-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <h6 class="card-title mb-1">${route.name}</h6>
+                                <small class="text-muted">
+                                    ${route.totalDistanceKm.toFixed(2)} km • ${Math.round(route.estimatedTimeMinutes)} min
+                                    <br>Waypoints: ${route.waypointCount}
+                                    <br>Created: ${new Date(route.createdAt).toLocaleDateString()}
+                                </small>
+                            </div>
+                            <div class="btn-group-vertical btn-group-sm">
+                                <button class="btn btn-outline-primary btn-sm" onclick="displayRouteOnMap(${route.id})">
+                                    <i class="fas fa-map"></i>
+                                </button>
+                                <button class="btn btn-outline-danger btn-sm" onclick="deleteRoute(${route.id})">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            routesList.innerHTML = routesHtml;
+        }
+
+        // Function to display a saved route on the map
+        async function displayRouteOnMap(routeId) {
+            try {
+                const response = await fetch(`/Map/route/${routeId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+                const route = result.route;
+
+                // Clear existing route
+                clearRoute();
+
+                // Create waypoint coordinates for the polyline
+                const waypoints = route.waypoints.map(wp => [wp.latitude, wp.longitude]);
+
+                if (waypoints.length > 0) {
+                    // Draw route line
+                    routeLine = L.polyline(waypoints, {
+                        color: '#28a745',
+                        weight: 4,
+                        opacity: 0.8,
+                        dashArray: '10, 5'
+                    }).addTo(map);
+
+                    // Add markers for start and end points
+                    if (waypoints.length >= 2) {
+                        const startPoint = waypoints[0];
+                        const endPoint = waypoints[waypoints.length - 1];
+
+                        // Start marker
+                        L.marker(startPoint, {
+                            icon: L.divIcon({
+                                className: 'custom-icon',
+                                html: '<i class="fas fa-play-circle text-success fa-2x"></i>',
+                                iconSize: [30, 30],
+                                iconAnchor: [15, 15]
+                            })
+                        }).addTo(map).bindPopup(`<b>Start</b><br>${route.name}`);
+
+                        // End marker
+                        L.marker(endPoint, {
+                            icon: L.divIcon({
+                                className: 'custom-icon',
+                                html: '<i class="fas fa-flag-checkered text-danger fa-2x"></i>',
+                                iconSize: [30, 30],
+                                iconAnchor: [15, 30]
+                            })
+                        }).addTo(map).bindPopup(`<b>Destination</b><br>${route.name}`);
+                    }
+
+                    // Fit map to route
+                    map.fitBounds(routeLine.getBounds());
+
+                    // Show route info
+                    const routeInfo = document.getElementById('routeInfo');
+                    routeInfo.style.display = 'block';
+                    routeInfo.innerHTML = `
+                        <div class="route-info">
+                            <h6>Saved Route: ${route.name}</h6>
+                            <p><i class="fas fa-arrows-alt-h"></i> <strong>Distance:</strong> ${route.totalDistanceKm.toFixed(2)} km</p>
+                            <p><i class="fas fa-clock"></i> <strong>Duration:</strong> ${Math.round(route.estimatedTimeMinutes)} min</p>
+                            <p><i class="fas fa-route"></i> <strong>Waypoints:</strong> ${route.waypoints.length}</p>
+                            <p><i class="fas fa-calendar"></i> <strong>Created:</strong> ${new Date(route.createdAt).toLocaleDateString()}</p>
+                        </div>
+                    `;
+
+                    showAlert('success', `Displaying saved route: ${route.name}`);
+                }
+
+            } catch (error) {
+                console.error('Error displaying route on map:', error);
+                showAlert('danger', 'Failed to display route: ' + error.message);
+            }
+        }
+
+        // Function to delete a saved route
+        async function deleteRoute(routeId) {
+            if (!confirm('Are you sure you want to delete this route?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/Map/route/${routeId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showAlert('success', 'Route deleted successfully');
+
+                    // Reload saved routes list
+                    loadSavedRoutes(currentCarId).then(routes => {
+                        displaySavedRoutes(routes);
+                    });
+
+                    // Clear the route from map if it's currently displayed
+                    clearRoute();
+                } else {
+                    throw new Error(result.message || 'Failed to delete route');
+                }
+
+            } catch (error) {
+                console.error('Error deleting route:', error);
+                showAlert('danger', 'Failed to delete route: ' + error.message);
+            }
+        }
+    </script>
+</body>
 </html>

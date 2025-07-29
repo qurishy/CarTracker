@@ -11,6 +11,7 @@ function safeGetElement(id) {
     const element = document.getElementById(id);
     if (!element) {
         console.warn(`Element with ID '${id}' not found`);
+        return null;
     }
     return element;
 }
@@ -28,6 +29,12 @@ function safeSetContent(elementId, content, property = 'textContent') {
 // Initialize SignalR connection
 async function initSignalR() {
     try {
+        if (typeof signalR === 'undefined') {
+            console.error('SignalR library not loaded');
+            setTimeout(initSignalR, 2000); // Retry after delay
+            return;
+        }
+
         dashboardConnection = new signalR.HubConnectionBuilder()
             .withUrl("/trackingHub")
             .build();
@@ -418,7 +425,8 @@ async function showVehicleDetails(vehicleId) {
 
 // Track vehicle on map
 function trackVehicleOnMap(vehicleId) {
-    window.open(`/Map/Index?vehicleId=${vehicleId}`, '_blank');
+      window.open(`/Map/Index?id=${vehicleId}`, '_blank');
+  
 }
 
 // Refresh GPS data with null checks
@@ -579,8 +587,11 @@ function updateVehicleInList(carId, latitude, longitude, timestamp) {
 // Update system uptime with null checks
 function updateSystemUptime() {
     try {
-        const uptimeElement = safeGetElement('systemUptime');
-        if (!uptimeElement) return;
+        const uptimeElement = safeGetElement('systemUptimeValue');
+        if (!uptimeElement) {
+            console.log("systemUptime element not found - skipping update");
+            return;
+        }
 
         const uptime = new Date() - startTime;
         const hours = Math.floor(uptime / (1000 * 60 * 60));

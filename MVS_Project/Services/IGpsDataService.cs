@@ -1,4 +1,7 @@
-﻿using MVS_Project.Models;
+﻿// Services/IGpsDataService.cs
+using MVS_Project.Models;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace MVS_Project.Services
 {
