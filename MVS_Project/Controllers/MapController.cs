@@ -539,6 +539,100 @@ namespace MVS_Project.Controllers
         }
 
 
+
+
+        [HttpPost]
+        public async Task<IActionResult> SaveRoute([FromBody] RouteCar request)
+        {
+            try
+            {
+                _logger.LogInformation("Saving route for car {CarId}: {RouteName}", request.CarId, request.Name);
+
+                // Validate the request
+                if (request.CarId <= 0)
+                {
+                    return BadRequest(new { success = false, message = "Invalid car ID" });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.Name))
+                {
+                    return BadRequest(new { success = false, message = "Route name is required" });
+                }
+
+                if (request.Waypoints == null || !request.Waypoints.Any())
+                {
+                    return BadRequest(new { success = false, message = "At least one waypoint is required" });
+                }
+
+                // Check if car exists - using your Cars model
+                var carExists = await _context.Car.AnyAsync(c => c.Id == request.CarId);
+                if (!carExists)
+                {
+                    return NotFound(new { success = false, message = $"Car with ID {request.CarId} not found" });
+                }
+
+                // Create the route entity using your RouteCar model
+                var route = new RouteCar
+                {
+                    Name = request.Name,
+                    CarId = request.CarId,
+                    TotalDistanceKm = request.TotalDistanceKm,
+                    EstimatedTimeMinutes = request.EstimatedTimeMinutes,
+                    CreatedAt = DateTime.UtcNow,
+                    IsActive = true,
+                    Waypoints = new List<RouteWaypoint>()
+                };
+
+                // Add waypoints using your RouteWaypoint model
+                foreach (var waypoint in request.Waypoints.OrderBy(w => w.Order))
+                {
+                    route.Waypoints.Add(new RouteWaypoint
+                    {
+                        Latitude = waypoint.Latitude,
+                        Longitude = waypoint.Longitude,
+                        Order = waypoint.Order,
+                        EstimatedArrival = waypoint.EstimatedArrival,
+                        Route = route // Set the navigation property
+                    });
+                }
+
+                // Save to database - assuming your DbSet is named RouteCars or Routes
+                _context.Routes.Add(route); // Change this to match your DbContext property name
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Route saved successfully with ID {RouteId}, {WaypointCount} waypoints",
+                    route.Id, route.Waypoints.Count);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = "Route saved successfully",
+                    routeId = route.Id,
+                    waypointCount = route.Waypoints.Count,
+                    route = new
+                    {
+                        route.Id,
+                        route.Name,
+                        route.CarId,
+                        route.TotalDistanceKm,
+                        route.EstimatedTimeMinutes,
+                        route.CreatedAt,
+                        WaypointCount = route.Waypoints.Count
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving route for car {CarId}", request?.CarId);
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Failed to save route: " + ex.Message
+                });
+            }
+        }
+
+
         #endregion
 
         #region Utility Methods
