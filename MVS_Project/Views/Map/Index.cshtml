@@ -80,10 +80,10 @@
             cursor: pointer;
         }
 
-        .saved-route-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-        }
+            .saved-route-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            }
 
         .route-controls-header {
             background: #f8f9fa;
@@ -173,7 +173,7 @@
                             <i class="fas fa-route me-2"></i>Route Planning
                         </h6>
                     </div>
-                    
+
                     <div class="input-group mb-3">
                         <span class="input-group-text"><i class="fas fa-map-marker-alt"></i></span>
                         <input type="text" id="destination" class="form-control" placeholder="Enter destination..." list="destinationSuggestions">
@@ -203,12 +203,12 @@
 
     <!-- Alert Container -->
     <div id="alertContainer" class="alert-container"></div>
-   
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@7.0.5/dist/browser/signalr.min.js"></script>
-  
+
     <script>
         // Fallback if CDN fails
         if (typeof signalR === 'undefined') {
@@ -219,7 +219,7 @@
     <script>
         // Global variables
         let map, carMarker, historyPolyline, realtimePolyline;
-        let currentCarId = @(carId.HasValue ? carId.Value : 0);
+        let currentCarId = @(carId.HasValue? carId.Value: 0);
         let signalRConnection;
         let routeLine = null;
         let routeMarkers = [];
@@ -451,7 +451,7 @@
         function fetchSuggestions(query, datalistId) {
             if (!query || query.length < 3) return;
 
-            fetch(`https://api.openrouteservice.org/geocode/autocomplete?api_key=${ORS_API_KEY}&text=${encodeURIComponent(query)}&boundary.country=AF`)
+            fetch(`/Map/GeocodeAutocomplete?query=${encodeURIComponent(query)}&country=AF`)
                 .then(res => res.json())
                 .then(data => {
                     const list = document.getElementById(datalistId);
@@ -471,6 +471,7 @@
         }
 
         // Get route between current car position and destination
+              // Get route between current car position and destination
         async function getRoute() {
             const destination = document.getElementById("destination").value;
 
@@ -480,6 +481,8 @@
             }
 
             try {
+                console.log("Starting route calculation...");
+
                 // Show loading state
                 const routeInfo = document.getElementById('routeInfo');
                 routeInfo.style.display = 'block';
@@ -490,43 +493,74 @@
                     throw new Error('Cannot determine current vehicle position');
                 }
                 const fromCoord = carMarker.getLatLng();
+                console.log("From coordinate:", fromCoord);
 
-                // Geocode destination
-                const toGeo = await fetch(`https://api.openrouteservice.org/geocode/search?api_key=${ORS_API_KEY}&text=${encodeURIComponent(destination)}`)
-                    .then(res => res.json());
+                // Geocode destination using our server-side proxy
+                console.log("Geocoding destination:", destination);
+                const toGeoResponse = await fetch(`/Map/GeocodeSearch?query=${encodeURIComponent(destination)}&country=AF`);
+
+                if (!toGeoResponse.ok) {
+                    const errorText = await toGeoResponse.text();
+                    console.error("Geocoding failed:", toGeoResponse.status, errorText);
+                    throw new Error(`Geocoding failed: ${toGeoResponse.status} - ${errorText}`);
+                }
+
+                const toGeo = await toGeoResponse.json();
+                console.log("Geocoding response:", toGeo);
 
                 if (!toGeo.features || !toGeo.features.length) {
                     throw new Error('Could not find location for destination');
                 }
 
                 const toCoord = toGeo.features[0].geometry.coordinates;
+                console.log("To coordinate:", toCoord);
 
-                // Get route between coordinates
-                const body = {
+                // Get route using our server-side proxy
+                const directionsRequest = {
                     coordinates: [
-                        [fromCoord.lng, fromCoord.lat],
-                        toCoord
-                    ],
-                    instructions: false
+                        [fromCoord.lng, fromCoord.lat], // Current position
+                        toCoord // Destination
+                    ]
                 };
 
-                const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-                const apiUrl = 'https://api.openrouteservice.org/v2.1/directions/driving-car/geojson';
+                console.log("Directions request:", directionsRequest);
 
-                const route = await fetch(proxyUrl + apiUrl, {
+                const routeResponse = await fetch('/Map/GetDirections', {
                     method: 'POST',
                     headers: {
-                        'Authorization': ORS_API_KEY,
                         'Content-Type': 'application/json',
-                        'Accept': 'application/json, application/geo+json'
+                        'Accept': 'application/json'
                     },
-                    body: JSON.stringify(body)
-                }).then(res => {
-                    if (!res.ok) {
-                        throw new Error(`HTTP error! status: ${res.status}`);
-                    }
-                    return res.json();
+                    body: JSON.stringify(directionsRequest)
                 });
+
+                console.log("Route response status:", routeResponse.status);
+
+                if (!routeResponse.ok) {
+                    let errorMessage = `HTTP error! status: ${routeResponse.status}`;
+                    let errorDetails = '';
+
+                    try {
+                        const errorData = await routeResponse.json();
+                        console.error("Route error data:", errorData);
+                        errorMessage = errorData.error || errorMessage;
+                        errorDetails = errorData.details || '';
+                    } catch (e) {
+                        // If response is not JSON, try to get text
+                        try {
+                            errorDetails = await routeResponse.text();
+                            console.error("Route error text:", errorDetails);
+                        } catch (textError) {
+                            console.error("Could not parse error response:", textError);
+                            errorDetails = routeResponse.statusText || '';
+                        }
+                    }
+
+                    throw new Error(`${errorMessage}${errorDetails ? ': ' + errorDetails : ''}`);
+                }
+
+                const route = await routeResponse.json();
+                console.log("Route response:", route);
 
                 if (!route.features || !route.features.length) {
                     throw new Error('No route features returned');
@@ -535,6 +569,8 @@
                 const summary = route.features[0].properties.summary;
                 const distanceKm = (summary.distance / 1000).toFixed(2);
                 const durationMin = (summary.duration / 60).toFixed(1);
+
+                console.log("Route summary:", { distanceKm, durationMin });
 
                 // Store current route data for saving
                 currentRouteData = {
@@ -553,11 +589,20 @@
                 // Show save button
                 $('#saveRouteBtn').show();
 
+                console.log("Route calculation completed successfully");
+
             } catch (error) {
                 console.error('Error in route calculation:', error);
                 const routeInfo = document.getElementById('routeInfo');
-                routeInfo.innerHTML = `<div class="alert alert-danger">Error calculating route: ${error.message}</div>`;
+                routeInfo.innerHTML = `<div class="alert alert-danger">
+                    <strong>Error calculating route:</strong><br>
+                    ${error.message}
+                    <br><small class="text-muted">Check browser console for more details</small>
+                </div>`;
                 clearRoute();
+
+                // Show detailed error in alert
+                showAlert('danger', `Route calculation failed: ${error.message}`);
             }
         }
 
@@ -714,10 +759,10 @@
 
                 const result = await response.json();
                 showAlert('success', `Route saved successfully! (ID: ${result.routeId})`);
-                
+
                 // Refresh saved routes
                 await loadSavedRoutes(currentCarId);
-                
+
                 // Reset save button
                 $('#saveRouteBtn').html('<i class="fas fa-save me-1"></i>Save Route').hide();
 
@@ -745,7 +790,7 @@
         // Display saved routes
         function displaySavedRoutes(routes) {
             const routesList = document.getElementById('savedRoutesList');
-            
+
             if (routes.length === 0) {
                 routesList.innerHTML = '<p class="text-muted">No saved routes found.</p>';
                 return;
@@ -939,11 +984,11 @@
             document.getElementById('destination').value = '';
             document.getElementById('routeInfo').style.display = 'none';
             document.getElementById('routeInfo').innerHTML = '';
-            
+
             // Hide current route card
             $('#currentRouteCard').hide();
             $('#saveRouteBtn').hide();
-            
+
             // Clear current route data
             currentRouteData = null;
         }
@@ -952,10 +997,10 @@
         function showAlert(type, message) {
             const alertContainer = document.getElementById('alertContainer');
             const alertId = 'alert_' + Date.now();
-            
+
             const iconClass = {
                 'success': 'fa-check-circle',
-                'danger': 'fa-exclamation-circle', 
+                'danger': 'fa-exclamation-circle',
                 'warning': 'fa-exclamation-triangle',
                 'info': 'fa-info-circle'
             }[type] || 'fa-info-circle';

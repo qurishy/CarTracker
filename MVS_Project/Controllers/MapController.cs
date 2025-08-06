@@ -14,12 +14,17 @@ namespace MVS_Project.Controllers
         private readonly IGpsDataService _gpsService;
         private readonly ILogger<MapController> _logger;
         //private readonly string _orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YzU1OGVlODQyNzQ5Yzc4MmE3MDc3ZjcwZGYyMzMyIiwiaCI6Im11cm11cjY0In0=";
+        private readonly HttpClient _httpClient;
+        private readonly string _orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YzU1OGVlODQyNzQ5Yzc4MmE3MDc3ZjcwZGYyMzMyIiwiaCI6Im11cm11cjY0In0=";
 
-        public MapController(AppDbContext context, IGpsDataService gpsService, ILogger<MapController> logger)
+
+        public MapController(AppDbContext context, IGpsDataService gpsService, ILogger<MapController> logger, HttpClient client)
         {
             _context = context;
             _gpsService = gpsService;
             _logger = logger;
+            _httpClient = client;
+
         }
 
         #region View Actions
@@ -765,7 +770,267 @@ namespace MVS_Project.Controllers
 
         #endregion
 
-   
+
+        #region geocoding Methods and routing the map
+
+        /// <summary>
+        /// Server-side proxy for OpenRouteService geocoding API
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GeocodeSearch(string query, string country = "AF")
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query) || query.Length < 3)
+                {
+                    return BadRequest(new { error = "Query must be at least 3 characters long" });
+                }
+
+                // Use API key as query parameter, not in Authorization header
+                var url = $"https://api.openrouteservice.org/geocode/search?api_key={_orsApiKey}&text={Uri.EscapeDataString(query)}&boundary.country={country}";
+
+                using var httpClient = new HttpClient();
+                var response = await httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Geocoding API returned {StatusCode}: {ReasonPhrase}. Content: {ErrorContent}",
+                        response.StatusCode, response.ReasonPhrase, errorContent);
+                    return StatusCode((int)response.StatusCode, new { error = "Geocoding service unavailable", details = errorContent });
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                return Content(content, "application/json");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in geocoding search for query: {Query}", query);
+                return StatusCode(500, new { error = "Internal server error during geocoding", details = ex.Message });
+            }
+        }
+        /// <summary>
+        /// Server-side proxy for OpenRouteService autocomplete API
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GeocodeAutocomplete(string query, string country = "AF")
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(query) || query.Length < 3)
+                {
+                    return Json(new { features = new object[0] });
+                }
+
+                // Use API key as query parameter, not in Authorization header
+                var url = $"https://api.openrouteservice.org/geocode/autocomplete?api_key={_orsApiKey}&text={Uri.EscapeDataString(query)}&boundary.country={country}";
+
+                using var httpClient = new HttpClient();
+                var response = await httpClient.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorContent = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Autocomplete API returned {StatusCode}: {ReasonPhrase}. Content: {ErrorContent}",
+                        response.StatusCode, response.ReasonPhrase, errorContent);
+                    return Json(new { features = new object[0] });
+                }
+
+                var content = await response.Content.ReadAsStringAsync();
+                return Content(content, "application/json");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in autocomplete for query: {Query}", query);
+                return Json(new { features = new object[0] });
+            }
+        }
+
+        /// <summary>
+        /// Server-side proxy for OpenRouteService directions API
+        /// </summary>
+        /// <summary>
+        /// Server-side proxy for OpenRouteService directions API
+        /// </summary>
+        /// <summary>
+        /// Server-side proxy for OpenRouteService directions API
+        /// </summary>
+        /// <summary>
+        /// Server-side proxy for OpenRouteService directions API
+        /// </summary>
+        /// <summary>
+        /// Server-side proxy for OpenRouteService directions API
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> GetDirections([FromBody] DirectionsRequest request)
+        {
+            try
+            {
+                _logger.LogInformation("GetDirections method called");
+
+                // Validate request
+                if (request == null)
+                {
+                    _logger.LogWarning("Request is null");
+                    return BadRequest(new { error = "Request body is required" });
+                }
+
+                if (request.Coordinates == null || request.Coordinates.Count < 2)
+                {
+                    _logger.LogWarning("Invalid coordinates: {CoordinateCount}", request.Coordinates?.Count ?? 0);
+                    return BadRequest(new { error = "At least 2 coordinates are required" });
+                }
+
+                // Log the incoming request for debugging
+                _logger.LogInformation("GetDirections called with {CoordinateCount} coordinates", request.Coordinates.Count);
+                foreach (var coord in request.Coordinates)
+                {
+                    _logger.LogInformation("Coordinate: [{Lng}, {Lat}]", coord[0], coord[1]);
+                }
+
+                // Validate API key
+                if (string.IsNullOrWhiteSpace(_orsApiKey))
+                {
+                    _logger.LogError("ORS API key is not configured");
+                    return StatusCode(500, new { error = "API key not configured" });
+                }
+
+                // Create request body
+                var requestBody = new
+                {
+                    coordinates = request.Coordinates,
+                    instructions = false,
+                    geometry = true
+                };
+
+                var json = JsonConvert.SerializeObject(requestBody);
+                _logger.LogInformation("Request JSON: {Json}", json);
+
+                // Use HttpClientFactory or create new instance
+                using var httpClient = new HttpClient();
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+                // Try using GET request with query parameters like geocoding
+                httpClient.DefaultRequestHeaders.Clear();
+                httpClient.DefaultRequestHeaders.Accept.Clear();
+                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+                // Build coordinates string for GET request (start and end coordinates)
+                var startCoord = request.Coordinates[0]; // [lng, lat]
+                var endCoord = request.Coordinates[1];   // [lng, lat]
+
+                // Use GET request with coordinates as query parameters
+                var url = $"https://api.openrouteservice.org/v2/directions/driving-car?api_key={_orsApiKey}&start={startCoord[0]},{startCoord[1]}&end={endCoord[0]},{endCoord[1]}&format=geojson";
+
+                _logger.LogInformation("Sending GET request to: {Url}", url);
+                _logger.LogInformation("Start: [{StartLng},{StartLat}], End: [{EndLng},{EndLat}]", startCoord[0], startCoord[1], endCoord[0], endCoord[1]);
+
+                var response = await httpClient.GetAsync(url);
+
+                _logger.LogInformation("Response status: {StatusCode}", response.StatusCode);
+
+                var responseContent = await response.Content.ReadAsStringAsync();
+                _logger.LogInformation("Response content length: {Length}", responseContent?.Length ?? 0);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogError("ORS API error {StatusCode}: {Content}", response.StatusCode, responseContent);
+
+                    return StatusCode((int)response.StatusCode, new
+                    {
+                        error = "Routing service error",
+                        details = responseContent,
+                        statusCode = (int)response.StatusCode,
+                        url = url
+                    });
+                }
+
+                _logger.LogInformation("Successfully received directions response");
+                return Content(responseContent, "application/json");
+            }
+            catch (JsonException jsonEx)
+            {
+                _logger.LogError(jsonEx, "JSON serialization error");
+                return StatusCode(500, new { error = "JSON processing error", details = jsonEx.Message });
+            }
+            catch (HttpRequestException httpEx)
+            {
+                _logger.LogError(httpEx, "HTTP request error");
+                return StatusCode(500, new { error = "Network error", details = httpEx.Message });
+            }
+            catch (TaskCanceledException tcEx)
+            {
+                _logger.LogError(tcEx, "Request timeout");
+                return StatusCode(408, new { error = "Request timeout", details = tcEx.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error in GetDirections");
+                return StatusCode(500, new
+                {
+                    error = "Internal server error",
+                    details = ex.Message,
+                    stackTrace = ex.StackTrace
+                });
+            }
+        }
+        #endregion
+
+
+        /// <summary>
+        /// Test endpoint to verify ORS API connectivity
+        /// </summary>
+        /// <summary>
+        /// Test endpoint to verify ORS API connectivity
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> TestOrsApi()
+        {
+            try
+            {
+                _logger.LogInformation("Testing ORS API connectivity");
+
+                if (string.IsNullOrWhiteSpace(_orsApiKey))
+                {
+                    return BadRequest(new { error = "API key not configured" });
+                }
+
+                // Test with a simple geocoding request first
+                using var httpClient = new HttpClient();
+                // Don't use Authorization header - use query parameter instead
+
+                var testUrl = $"https://api.openrouteservice.org/geocode/search?api_key={_orsApiKey}&text=Kabul&boundary.country=AF";
+
+                _logger.LogInformation("Testing with URL: {Url}", testUrl);
+
+                var response = await httpClient.GetAsync(testUrl);
+                var content = await response.Content.ReadAsStringAsync();
+
+                _logger.LogInformation("Test response status: {StatusCode}", response.StatusCode);
+                _logger.LogInformation("Test response content: {Content}", content);
+
+                return Ok(new
+                {
+                    success = response.IsSuccessStatusCode,
+                    statusCode = (int)response.StatusCode,
+                    apiKeyConfigured = !string.IsNullOrWhiteSpace(_orsApiKey),
+                    apiKeyPrefix = _orsApiKey?.Substring(0, Math.Min(_orsApiKey.Length, 20)) + "...",
+                    testUrl = testUrl,
+                    responseContent = content
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error testing ORS API");
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = ex.Message,
+                    details = ex.StackTrace
+                });
+            }
+        }
+
 
 
     }

@@ -14,7 +14,17 @@ builder.Services.AddSignalR(hubOptions => {
     hubOptions.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
     hubOptions.KeepAliveInterval = TimeSpan.FromSeconds(30);
 });
-//=================================================================================================
+
+// Add HttpClient for external API calls with proper configuration
+builder.Services.AddHttpClient();
+
+// Configure specific HttpClient for MapController if needed
+builder.Services.AddHttpClient("OpenRouteService", client =>
+{
+    client.BaseAddress = new Uri("https://api.openrouteservice.org/");
+    client.Timeout = TimeSpan.FromSeconds(30);
+    client.DefaultRequestHeaders.Add("User-Agent", "MVS-Project/1.0");
+});
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
@@ -53,22 +63,15 @@ var app = builder.Build();
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
 app.UseHttpsRedirection();
-
 app.UseCors("AllowAll");
-
 app.UseStaticFiles();
-
 app.UseRouting();
-
 app.UseAuthorization();
-
 app.MapStaticAssets();
-
 
 // Keep the existing default route
 app.MapControllerRoute(
