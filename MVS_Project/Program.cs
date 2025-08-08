@@ -29,20 +29,32 @@ builder.Services.AddHttpClient("OpenRouteService", client =>
 // Add services to the container.
 builder.Services.AddControllersWithViews();
 
-builder.Services.AddHttpClient<RealGpsService>(client =>
-{
-    client.BaseAddress = new Uri(builder.Configuration["GpsApi:BaseUrl"]);
-    client.Timeout = TimeSpan.FromSeconds(30);
-}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
-{
-    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
-});
+//builder.Services.AddHttpClient<RealGpsService>(client =>
+//{
+//    client.BaseAddress = new Uri(builder.Configuration["GpsApi:BaseUrl"]);
+//    client.Timeout = TimeSpan.FromSeconds(30);
+//}).ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+//{
+//    ServerCertificateCustomValidationCallback = (message, cert, chain, errors) => true
+//});
 
-// Register GPS services
-builder.Services.AddScoped<IGpsDataService, RealGpsService>();
 
-// Register background service for periodic GPS updates
-builder.Services.AddHostedService<GpsBackgroundService>();
+// Register GPS service (this connects to your external SignalR GPS API)
+builder.Services.AddSingleton<IGpsDataService, SignalRGpsClientService>();
+
+
+
+
+
+//// Register GPS services
+//builder.Services.AddScoped<IGpsDataService, RealGpsService>();
+
+//// Register background service for periodic GPS updates
+//builder.Services.AddHostedService<GpsBackgroundService>();
+
+
+
+
 
 builder.Services.AddCors(options =>
 {
@@ -80,6 +92,9 @@ app.MapControllerRoute(
 
 app.MapHub<TrackingHub>("/trackingHub");
 
+
+
+
 // Initialize database
 using (var scope = app.Services.CreateScope())
 {
@@ -95,5 +110,9 @@ using (var scope = app.Services.CreateScope())
         db.SaveChanges();
     }
 }
+
+// Start GPS data service
+var gpsService = app.Services.GetRequiredService<IGpsDataService>();
+await gpsService.StartRealtimeUpdatesAsync();
 
 app.Run();

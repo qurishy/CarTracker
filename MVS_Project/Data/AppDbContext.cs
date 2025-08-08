@@ -22,11 +22,14 @@ namespace MVS_Project.Data
                 .HasForeignKey(lh => lh.CarId)
                 .OnDelete(DeleteBehavior.Cascade);
 
+
             modelBuilder.Entity<Cars>()
                 .HasMany(c => c.Routes)
                 .WithOne(r => r.Car)
                 .HasForeignKey(r => r.CarId)
                 .OnDelete(DeleteBehavior.Cascade);
+
+
 
             modelBuilder.Entity<RouteCar>()
                 .HasMany(r => r.Waypoints)

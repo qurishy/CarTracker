@@ -47,7 +47,7 @@ namespace MVS_Project.Migrations
 
                     b.HasKey("Id");
 
-                    b.ToTable("Car");
+                    b.ToTable("Car", (string)null);
                 });
 
             modelBuilder.Entity("MVS_Project.Models.LocationHistory", b =>
@@ -76,7 +76,7 @@ namespace MVS_Project.Migrations
 
                     b.HasIndex("Timestamp");
 
-                    b.ToTable("LocationHistory");
+                    b.ToTable("LocationHistory", (string)null);
                 });
 
             modelBuilder.Entity("MVS_Project.Models.RouteCar", b =>
@@ -110,7 +110,7 @@ namespace MVS_Project.Migrations
 
                     b.HasIndex("CarId");
 
-                    b.ToTable("Routes");
+                    b.ToTable("Routes", (string)null);
                 });
 
             modelBuilder.Entity("MVS_Project.Models.RouteWaypoint", b =>
@@ -142,7 +142,7 @@ namespace MVS_Project.Migrations
 
                     b.HasIndex("RouteId");
 
-                    b.ToTable("RouteWaypoints");
+                    b.ToTable("RouteWaypoints", (string)null);
                 });
 
             modelBuilder.Entity("MVS_Project.Models.LocationHistory", b =>
