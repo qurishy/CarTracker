@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/MVS_Project.styles.css" asp-append-version="true" />
-
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 </head>
 
 <body>
@@ -53,6 +53,7 @@
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
 @*     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.5/signalr.min.js"></script> *@
     <script src="https://cdn.jsdelivr.net/npm/@@microsoft/signalr@7.0.5/dist/browser/signalr.min.js"></script>
+   
     <script>
         // Fallback if CDN fails
         if (typeof signalR === 'undefined') {
@@ -68,6 +69,7 @@
     <script src="~/js/Dashboard.js?v=@DateTime.UtcNow.Ticks"></script>
     <script src="~/js/index.js?v=@DateTime.UtcNow.Ticks"></script>
 
+    <script src="~/js/map.js?v=@DateTime.UtcNow.Ticks"></script>
 
     @await RenderSectionAsync("Scripts", required: false)
 </body>

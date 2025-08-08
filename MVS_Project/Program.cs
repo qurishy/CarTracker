@@ -10,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
+
+
 builder.Services.AddSignalR(hubOptions => {
     hubOptions.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
     hubOptions.KeepAliveInterval = TimeSpan.FromSeconds(30);
