@@ -4,6 +4,7 @@ using MVS_Project.Data;
 using MVS_Project.Models;
 using MVS_Project.Services;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.Net.Http.Headers;
 
 namespace MVS_Project.Controllers
@@ -13,10 +14,8 @@ namespace MVS_Project.Controllers
         private readonly AppDbContext _context;
         private readonly IGpsDataService _gpsService;
         private readonly ILogger<MapController> _logger;
-        //private readonly string _orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YzU1OGVlODQyNzQ5Yzc4MmE3MDc3ZjcwZGYyMzMyIiwiaCI6Im11cm11cjY0In0=";
         private readonly HttpClient _httpClient;
         private readonly string _orsApiKey = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4YzU1OGVlODQyNzQ5Yzc4MmE3MDc3ZjcwZGYyMzMyIiwiaCI6Im11cm11cjY0In0=";
-
 
         public MapController(AppDbContext context, IGpsDataService gpsService, ILogger<MapController> logger, HttpClient client)
         {
@@ -24,7 +23,6 @@ namespace MVS_Project.Controllers
             _gpsService = gpsService;
             _logger = logger;
             _httpClient = client;
-
         }
 
         #region View Actions
@@ -32,18 +30,15 @@ namespace MVS_Project.Controllers
         /// <summary>
         /// Main map view - renders the map interface
         /// </summary>
-        /// <returns>Map view with initial data</returns>
         public IActionResult Index(int? id)
         {
-            ViewBag.CarId = id; // Pass car ID to the view
+            ViewBag.CarId = id;
             return View();
         }
 
         /// <summary>
         /// Dashboard view showing car statistics and controls
         /// </summary>
-        /// <returns>Dashboard view</returns>
-
         [HttpGet]
         public async Task<IActionResult> Dashboard()
         {
@@ -66,10 +61,7 @@ namespace MVS_Project.Controllers
 
         /// <summary>
         /// Manually refresh GPS positions from external API
-        /// This calls your GPS API and saves the latest positions to database
         /// </summary>
-        /// <param name="countryCode">Country code for GPS data (default: AF)</param>
-        /// <returns>JSON response with updated positions</returns>
         [HttpPost]
         public async Task<IActionResult> RefreshGpsPositions(string countryCode = "AF")
         {
@@ -77,12 +69,10 @@ namespace MVS_Project.Controllers
             {
                 _logger.LogInformation("Manual GPS refresh requested for country: {CountryCode}", countryCode);
 
-                // Call the GPS API to get latest positions
                 var positions = await _gpsService.GetLatestPositionsAsync(countryCode);
 
                 if (positions.Any())
                 {
-                    // The GPS service automatically saves to database
                     var result = positions.Select(p => new
                     {
                         CarId = p.CarId,
@@ -126,9 +116,6 @@ namespace MVS_Project.Controllers
         /// <summary>
         /// Get real-time position for a specific car from GPS API
         /// </summary>
-        /// <param name="carId">Car ID to track</param>
-        /// <param name="countryCode">Country code</param>
-        /// <returns>JSON response with car position</returns>
         [HttpGet]
         public async Task<IActionResult> GetRealTimeCarPosition(int carId, string countryCode = "AF")
         {
@@ -173,9 +160,7 @@ namespace MVS_Project.Controllers
 
         /// <summary>
         /// Get all active cars with their latest positions from database
-        /// This queries your local database, not the external GPS API
         /// </summary>
-        /// <returns>JSON array of cars with their last known positions</returns>
         [HttpGet]
         public async Task<IActionResult> GetActiveCars()
         {
@@ -194,8 +179,6 @@ namespace MVS_Project.Controllers
         /// <summary>
         /// Get detailed information for a specific car from database
         /// </summary>
-        /// <param name="id">Car ID</param>
-        /// <returns>JSON object with car details and last position</returns>
         [HttpGet]
         public async Task<IActionResult> GetCar(int id)
         {
@@ -242,7 +225,6 @@ namespace MVS_Project.Controllers
             }
         }
 
-
         [HttpGet]
         public async Task<IActionResult> GetCarLocations(int vehicleId)
         {
@@ -252,11 +234,11 @@ namespace MVS_Project.Controllers
 
                 var history = await _context.LocationHistory
                     .Where(l => l.CarId == vehicleId)
-                    .OrderByDescending(l => l.Timestamp) // Latest first (frontend will reverse if needed)
+                    .OrderByDescending(l => l.Timestamp)
                     .Select(l => new
                     {
-                        Latitude = l.Latitude,    // Match exactly what frontend expects
-                        Longitude = l.Longitude,  // Match exactly what frontend expects  
+                        Latitude = l.Latitude,
+                        Longitude = l.Longitude,
                         Timestamp = l.Timestamp
                     })
                     .ToListAsync();
@@ -266,7 +248,7 @@ namespace MVS_Project.Controllers
                 if (!history.Any())
                 {
                     _logger.LogWarning("No location history found for vehicle {VehicleId}", vehicleId);
-                    return Json(new List<object>()); // Return empty array instead of null
+                    return Json(new List<object>());
                 }
 
                 return Json(history);
@@ -283,14 +265,9 @@ namespace MVS_Project.Controllers
             }
         }
 
-
         /// <summary>
         /// Get location history for a specific car
         /// </summary>
-        /// <param name="id">Car ID</param>
-        /// <param name="take">Number of records to return (default: 100)</param>
-        /// <param name="skip">Number of records to skip (for pagination)</param>
-        /// <returns>JSON array of location history</returns>
         [HttpGet]
         public async Task<IActionResult> GetCarHistory(int id, int take = 100, int skip = 0)
         {
@@ -330,38 +307,34 @@ namespace MVS_Project.Controllers
         /// <summary>
         /// Get location history for all cars within a time range
         /// </summary>
-        /// <param name="startDate">Start date for history</param>
-        /// <param name="endDate">End date for history</param>
-        /// <returns>JSON array of location history grouped by car</returns>
         [HttpGet]
         public async Task<IActionResult> GetAllCarsHistory(DateTime? startDate = null, DateTime? endDate = null)
         {
             try
             {
-                // Default to last 24 hours if no dates provided
                 var start = startDate ?? DateTime.UtcNow.AddHours(-24);
                 var end = endDate ?? DateTime.UtcNow;
 
                 var history = await _context.LocationHistory
-        .Include(l => l.Car)
-        .Where(l => l.Timestamp >= start && l.Timestamp <= end)
-        .OrderByDescending(l => l.Timestamp)
-        .GroupBy(l => l.CarId)
-        .Select(g => new
-        {
-            CarId = g.Key,
-            LicensePlate = g.First().Car.LicensePlate,
-            Make = g.First().Car.Make,
-            Model = g.First().Car.Model,
-            LocationCount = g.Count(),
-            Locations = g.Select(l => new  // Ensure this is always populated
-            {
-                l.Latitude,
-                l.Longitude,
-                l.Timestamp
-            }).ToList() // Convert to list to avoid null
-        })
-        .ToListAsync();
+                    .Include(l => l.Car)
+                    .Where(l => l.Timestamp >= start && l.Timestamp <= end)
+                    .OrderByDescending(l => l.Timestamp)
+                    .GroupBy(l => l.CarId)
+                    .Select(g => new
+                    {
+                        CarId = g.Key,
+                        LicensePlate = g.First().Car.LicensePlate,
+                        Make = g.First().Car.Make,
+                        Model = g.First().Car.Model,
+                        LocationCount = g.Count(),
+                        Locations = g.Select(l => new
+                        {
+                            l.Latitude,
+                            l.Longitude,
+                            l.Timestamp
+                        }).ToList()
+                    })
+                    .ToListAsync();
 
                 return Json(new
                 {
@@ -378,265 +351,356 @@ namespace MVS_Project.Controllers
             }
         }
 
-        /// <summary>
-        /// Saves the location history for cars within a time range
-        /// </summary>
-        /// Going to take the data from the frontend and save it to the database
-        /// <returns>JSON response</returns>
-        // Add these updated methods to your MapController
+        #endregion
 
-        [HttpGet("car/{carId}/routes")]
-        public async Task<IActionResult> GetRoutesByCar(int carId)
+        #region Route Management APIs
+
+        /// <summary>
+        /// Get saved routes for a specific vehicle
+        /// Matches frontend: loadSavedRoutes()
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetSavedRoutes(int vehicleId)
         {
+            if (vehicleId <= 0)
+                return BadRequest(new { error = "Invalid vehicleId" });
+
             try
             {
                 var routes = await _context.Routes
-                    .Where(r => r.CarId == carId && r.IsActive)
-                    .Include(r => r.Waypoints)
-                    .Include(r => r.Car)
-                    .OrderByDescending(r => r.CreatedAt)
+                    .Where(r => r.CarId == vehicleId && r.IsActive)
                     .Select(r => new
                     {
-                        r.Id,
-                        r.Name,
-                        r.CarId,
-                        r.TotalDistanceKm,
-                        r.EstimatedTimeMinutes,
-                        r.CreatedAt,
-                        r.IsActive,
-                        CarInfo = new
-                        {
-                            r.Car.LicensePlate,
-                            r.Car.Make,
-                            r.Car.Model
-                        },
-                        WaypointCount = r.Waypoints.Count,
-                        Waypoints = r.Waypoints
-                            .OrderBy(w => w.Order)
-                            .Select(w => new
-                            {
-                                w.Id,
-                                w.Latitude,
-                                w.Longitude,
-                                w.Order,
-                                w.EstimatedArrival
-                            }).ToList()
+                        id = r.Id, // lowercase to match frontend
+                        name = r.Name,
+                        carId = r.CarId,
+                        totalDistanceKm = r.TotalDistanceKm,
+                        estimatedTimeMinutes = r.EstimatedTimeMinutes,
+                        createdAt = r.CreatedAt
                     })
+                    .OrderByDescending(r => r.createdAt)
                     .ToListAsync();
 
-                _logger.LogInformation("Retrieved {Count} routes for car {CarId}", routes.Count, carId);
-
-                return Ok(new
-                {
-                    success = true,
-                    carId = carId,
-                    routeCount = routes.Count,
-                    routes = routes
-                });
+                return Json(routes);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching routes for car {CarId}", carId);
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Failed to retrieve routes: " + ex.Message
-                });
+                _logger.LogError(ex, "Error loading saved routes for vehicle {VehicleId}", vehicleId);
+                return StatusCode(500, new { error = "Failed to load saved routes" });
             }
         }
 
-        [HttpGet("route/{routeId}")]
-        public async Task<IActionResult> GetRouteById(int routeId)
+        /// <summary>
+        /// Get a single saved route by ID
+        /// Matches frontend: loadSavedRoute(id)
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> GetSavedRoute(int id)
         {
             try
             {
                 var route = await _context.Routes
                     .Include(r => r.Waypoints)
-                    .Include(r => r.Car)
-                    .Where(r => r.Id == routeId)
-                    .Select(r => new
-                    {
-                        r.Id,
-                        r.Name,
-                        r.CarId,
-                        r.TotalDistanceKm,
-                        r.EstimatedTimeMinutes,
-                        r.CreatedAt,
-                        r.IsActive,
-                        CarInfo = new
-                        {
-                            r.Car.LicensePlate,
-                            r.Car.Make,
-                            r.Car.Model
-                        },
-                        Waypoints = r.Waypoints
-                            .OrderBy(w => w.Order)
-                            .Select(w => new
-                            {
-                                w.Id,
-                                w.Latitude,
-                                w.Longitude,
-                                w.Order,
-                                w.EstimatedArrival,
-                                Position = new { Latitude = w.Latitude, Longitude = w.Longitude }
-                            }).ToList()
-                    })
+                    .Where(r => r.Id == id && r.IsActive)
                     .FirstOrDefaultAsync();
 
                 if (route == null)
-                {
-                    return NotFound(new { success = false, message = $"Route with ID {routeId} not found" });
-                }
+                    return NotFound(new { error = "Route not found" });
 
-                return Ok(new
+                // Convert waypoints to coordinate array format expected by frontend
+                var routeData = route.Waypoints
+                    .OrderBy(w => w.Order)
+                    .Select(w => new double[] { w.Latitude, w.Longitude })
+                    .ToList();
+
+                var result = new
                 {
-                    success = true,
-                    route = route
-                });
+                    id = route.Id,
+                    name = route.Name,
+                    carId = route.CarId,
+                    totalDistanceKm = route.TotalDistanceKm,
+                    estimatedTimeMinutes = route.EstimatedTimeMinutes,
+                    createdAt = route.CreatedAt,
+                    routeData = routeData, // This matches what frontend expects
+                    waypoints = route.Waypoints.OrderBy(w => w.Order).Select(w => new
+                    {
+                        latitude = w.Latitude,
+                        longitude = w.Longitude,
+                        order = w.Order
+                    }).ToList()
+                };
+
+                return Json(result);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching route {RouteId}", routeId);
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Failed to retrieve route: " + ex.Message
-                });
+                _logger.LogError(ex, "Error loading saved route {RouteId}", id);
+                return StatusCode(500, new { error = "Failed to load route" });
             }
         }
 
-        [HttpDelete("route/{routeId}")]
-        public async Task<IActionResult> DeleteRoute(int routeId)
-        {
-            try
-            {
-                var route = await _context.Routes
-                    .Include(r => r.Waypoints)
-                    .FirstOrDefaultAsync(r => r.Id == routeId);
-
-                if (route == null)
-                {
-                    return NotFound(new { success = false, message = $"Route with ID {routeId} not found" });
-                }
-
-                // Soft delete - just mark as inactive
-                route.IsActive = false;
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Route {RouteId} marked as inactive", routeId);
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Route deleted successfully",
-                    routeId = routeId
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error deleting route {RouteId}", routeId);
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Failed to delete route: " + ex.Message
-                });
-            }
-        }
-
-
-
-
+        /// <summary>
+        /// Save a new route
+        /// Matches frontend: saveCurrentRoute()
+        /// </summary>
         [HttpPost]
-        public async Task<IActionResult> SaveRoute([FromBody] RouteCar request)
+        public async Task<IActionResult> SaveRoute([FromBody] SaveRouteRequest request)
         {
+            if (request == null || string.IsNullOrWhiteSpace(request.Name))
+                return BadRequest(new { error = "Name is required" });
+
+            var carExists = await _context.Car.AnyAsync(c => c.Id == request.VehicleId);
+            if (!carExists)
+                return NotFound(new { error = "Car not found" });
+
             try
             {
-                _logger.LogInformation("Saving route for car {CarId}: {RouteName}", request.CarId, request.Name);
+                var coordinates = JsonConvert.DeserializeObject<List<double[]>>(request.RouteData);
+                if (coordinates == null || !coordinates.Any())
+                    return BadRequest(new { error = "Invalid route data" });
 
-                // Validate the request
-                if (request.CarId <= 0)
-                {
-                    return BadRequest(new { success = false, message = "Invalid car ID" });
-                }
-
-                if (string.IsNullOrWhiteSpace(request.Name))
-                {
-                    return BadRequest(new { success = false, message = "Route name is required" });
-                }
-
-                if (request.Waypoints == null || !request.Waypoints.Any())
-                {
-                    return BadRequest(new { success = false, message = "At least one waypoint is required" });
-                }
-
-                // Check if car exists - using your Cars model
-                var carExists = await _context.Car.AnyAsync(c => c.Id == request.CarId);
-                if (!carExists)
-                {
-                    return NotFound(new { success = false, message = $"Car with ID {request.CarId} not found" });
-                }
-
-                // Create the route entity using your RouteCar model
                 var route = new RouteCar
                 {
                     Name = request.Name,
-                    CarId = request.CarId,
-                    TotalDistanceKm = request.TotalDistanceKm,
-                    EstimatedTimeMinutes = request.EstimatedTimeMinutes,
+                    CarId = request.VehicleId,
+                    TotalDistanceKm = request.Distance / 1000.0, // Convert meters to km
+                    EstimatedTimeMinutes = request.Duration / 60.0, // Convert seconds to minutes
                     CreatedAt = DateTime.UtcNow,
                     IsActive = true,
                     Waypoints = new List<RouteWaypoint>()
                 };
 
-                // Add waypoints using your RouteWaypoint model
-                foreach (var waypoint in request.Waypoints.OrderBy(w => w.Order))
+                // Create waypoints from coordinates
+                for (int i = 0; i < coordinates.Count; i++)
                 {
+                    var coord = coordinates[i];
                     route.Waypoints.Add(new RouteWaypoint
                     {
-                        Latitude = waypoint.Latitude,
-                        Longitude = waypoint.Longitude,
-                        Order = waypoint.Order,
-                        EstimatedArrival = waypoint.EstimatedArrival,
-                        Route = route // Set the navigation property
+                        Latitude = coord[0], // Frontend sends [lat, lng]
+                        Longitude = coord[1],
+                        Order = i,
+                        Route = route
                     });
                 }
 
-                // Save to database - assuming your DbSet is named RouteCars or Routes
-                _context.Routes.Add(route); // Change this to match your DbContext property name
+                _context.Routes.Add(route);
                 await _context.SaveChangesAsync();
 
-                _logger.LogInformation("Route saved successfully with ID {RouteId}, {WaypointCount} waypoints",
-                    route.Id, route.Waypoints.Count);
+                return Json(new { success = true, message = "Route saved", routeId = route.Id });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error saving route for vehicle {VehicleId}", request?.VehicleId);
+                return StatusCode(500, new { error = "Save failed", details = ex.Message });
+            }
+        }
 
-                return Ok(new
+        /// <summary>
+        /// Delete a saved route (soft delete)
+        /// Matches frontend: deleteSavedRoute(id)
+        /// </summary>
+        [HttpDelete]
+        public async Task<IActionResult> DeleteSavedRoute(int id)
+        {
+            try
+            {
+                var route = await _context.Routes.FindAsync(id);
+                if (route == null)
+                    return NotFound(new { error = "Route not found" });
+
+                route.IsActive = false;
+                await _context.SaveChangesAsync();
+
+                return Json(new { success = true, message = "Route deleted successfully" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error deleting route {RouteId}", id);
+                return StatusCode(500, new { error = "Failed to delete route" });
+            }
+        }
+
+        #endregion
+
+        #region Geocoding and Routing APIs
+
+        /// <summary>
+        /// Search locations for autocomplete suggestions
+        /// Matches frontend: fetchSuggestions()
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> SearchLocations(string query, string country = "AF")
+        {
+            if (string.IsNullOrWhiteSpace(query) || query.Length < 2)
+                return BadRequest(new { error = "Query too short" });
+
+            try
+            {
+                var url = $"https://api.openrouteservice.org/geocode/autocomplete?api_key={_orsApiKey}&text={Uri.EscapeDataString(query)}&boundary.country={country}";
+
+                using var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
                 {
-                    success = true,
-                    message = "Route saved successfully",
-                    routeId = route.Id,
-                    waypointCount = route.Waypoints.Count,
-                    route = new
-                    {
-                        route.Id,
-                        route.Name,
-                        route.CarId,
-                        route.TotalDistanceKm,
-                        route.EstimatedTimeMinutes,
-                        route.CreatedAt,
-                        WaypointCount = route.Waypoints.Count
-                    }
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("ORS Autocomplete failed: {Code}, {Error}", response.StatusCode, error);
+                    return StatusCode((int)response.StatusCode, new { error = "Geocoding service error" });
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                return Content(json, "application/json");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Exception in SearchLocations for query '{Query}'", query);
+                return StatusCode(500, new { error = "Server error during search" });
+            }
+        }
+
+        /// <summary>
+        /// Geocode an address to coordinates
+        /// Matches frontend: getRoute() geocoding fallback
+        /// </summary>
+        [HttpGet]
+        public async Task<IActionResult> Geocode(string address, string country = "AF")
+        {
+            if (string.IsNullOrWhiteSpace(address) || address.Length < 3)
+                return BadRequest(new { error = "Address is required" });
+
+            try
+            {
+                var url = $"https://api.openrouteservice.org/geocode/search?api_key={_orsApiKey}&text={Uri.EscapeDataString(address)}&boundary.country={country}";
+
+                using var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogWarning("Geocode failed: {StatusCode}, {Error}", response.StatusCode, error);
+                    return StatusCode((int)response.StatusCode, new { error = "Geocoding failed" });
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                var result = JObject.Parse(json);
+
+                var features = result["features"] as JArray;
+                if (features == null || !features.Any())
+                    return NotFound(new { error = "Location not found" });
+
+                var first = features[0];
+                var geometry = first["geometry"]?["coordinates"] as JArray;
+                if (geometry == null || geometry.Count < 2)
+                    return NotFound(new { error = "No coordinates found" });
+
+                var lon = geometry[0].Value<double>();
+                var lat = geometry[1].Value<double>();
+                var displayName = first["properties"]?["label"]?.ToString() ?? address;
+
+                return Json(new
+                {
+                    lat = lat,
+                    lon = lon,
+                    display_name = displayName
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error saving route for car {CarId}", request?.CarId);
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Failed to save route: " + ex.Message
-                });
+                _logger.LogError(ex, "Error geocoding address '{Address}'", address);
+                return StatusCode(500, new { error = "Internal geocoding error" });
             }
         }
 
+        /// <summary>
+        /// Calculate route between two points
+        /// Matches frontend: getRoute()
+        /// </summary>
+        [HttpPost]
+        public async Task<IActionResult> GetRoute([FromBody] GetRouteRequest request)
+        {
+            if (request == null)
+                return BadRequest(new { error = "Invalid request body" });
+
+            if (request.StartLat == 0 || request.StartLng == 0 ||
+                request.EndLat == 0 || request.EndLng == 0)
+            {
+                return BadRequest(new { error = "Valid start and end coordinates required" });
+            }
+
+            try
+            {
+                // Build ORS Directions API URL with coordinates
+                var start = $"{request.StartLng},{request.StartLat}"; // ORS expects [lng, lat]
+                var end = $"{request.EndLng},{request.EndLat}";
+
+                var url = $"https://api.openrouteservice.org/v2/directions/driving-car?api_key={_orsApiKey}&start={start}&end={end}";
+
+                _logger.LogInformation("Calling ORS Directions API: {Url}", url);
+
+                using var response = await _httpClient.GetAsync(url);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var error = await response.Content.ReadAsStringAsync();
+                    _logger.LogError("ORS Directions API error {Code}: {Error}", response.StatusCode, error);
+                    return StatusCode((int)response.StatusCode, new { error = "Route calculation failed" });
+                }
+
+                var json = await response.Content.ReadAsStringAsync();
+                var orsData = JObject.Parse(json);
+
+                // Extract route features
+                var features = orsData["features"] as JArray;
+                if (features == null || !features.Any())
+                {
+                    return NotFound(new { error = "No route data returned from service" });
+                }
+
+                var firstFeature = features[0];
+                var geometry = firstFeature["geometry"]?["coordinates"] as JArray;
+                if (geometry == null || geometry.Count == 0)
+                {
+                    return NotFound(new { error = "No route geometry returned" });
+                }
+
+                // Extract distance and duration from properties
+                var summary = firstFeature["properties"]?["summary"];
+                var distance = (summary?["distance"]?.Value<double>() ?? 0) / 1000.0; // meters to km
+                var duration = (summary?["duration"]?.Value<double>() ?? 0) / 60.0; // seconds to minutes
+
+                // Convert coordinates: ORS returns [lng, lat], frontend expects [lat, lng]
+                var coordinates = new List<double[]>();
+                foreach (JToken coord in geometry)
+                {
+                    if (coord is JArray point && point.Count >= 2)
+                    {
+                        double lon = point[0].Value<double>();
+                        double lat = point[1].Value<double>();
+                        coordinates.Add(new[] { lat, lon }); // Convert to [lat, lng] for frontend
+                    }
+                }
+
+                // Return format expected by frontend displayRoute()
+                var routeData = new
+                {
+                    coordinates = coordinates,
+                    distance = Math.Round(distance, 2),
+                    duration = Math.Round(duration, 2),
+                    geometry = new { coordinates = coordinates }, // Alternative format
+                    origin = new { lat = request.StartLat, lng = request.StartLng },
+                    destination = new { lat = request.EndLat, lng = request.EndLng }
+                };
+
+                return Json(routeData);
+            }
+            catch (JsonReaderException jex)
+            {
+                _logger.LogError(jex, "Invalid JSON received from ORS API");
+                return StatusCode(502, new { error = "Invalid response from routing service", details = jex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error calculating route from ({StartLat}, {StartLng}) to ({EndLat}, {EndLng})",
+                    request.StartLat, request.StartLng, request.EndLat, request.EndLng);
+                return StatusCode(500, new { error = "Failed to calculate route", details = ex.Message });
+            }
+        }
 
         #endregion
 
@@ -673,27 +737,26 @@ namespace MVS_Project.Controllers
         private async Task<object> GetActiveCarData()
         {
             return await _context.Car
-        .Include(c => c.LocationHistory)
-        .Select(c => new
-        {
-            // Ensure these match your JSON structure
-            c.Id,
-            c.LicensePlate,
-            c.Make,
-            c.Model,
-            c.LastTracked,
-            IsActive = c.LastTracked > DateTime.UtcNow.AddHours(-1),
-            LastPosition = c.LocationHistory
-                .OrderByDescending(l => l.Timestamp)
-                .Select(l => new
+                .Include(c => c.LocationHistory)
+                .Select(c => new
                 {
-                    l.Latitude,
-                    l.Longitude
+                    c.Id,
+                    c.LicensePlate,
+                    c.Make,
+                    c.Model,
+                    c.LastTracked,
+                    IsActive = c.LastTracked > DateTime.UtcNow.AddHours(-1),
+                    LastPosition = c.LocationHistory
+                        .OrderByDescending(l => l.Timestamp)
+                        .Select(l => new
+                        {
+                            l.Latitude,
+                            l.Longitude
+                        })
+                        .FirstOrDefault(),
+                    LocationCount = c.LocationHistory.Count()
                 })
-                .FirstOrDefault(),
-            LocationCount = c.LocationHistory.Count()
-        })
-        .ToListAsync();
+                .ToListAsync();
         }
 
         #endregion
@@ -703,13 +766,11 @@ namespace MVS_Project.Controllers
         /// <summary>
         /// Check the status of GPS API connectivity
         /// </summary>
-        /// <returns>JSON response with API status</returns>
         [HttpGet]
         public async Task<IActionResult> CheckGpsApiStatus()
         {
             try
             {
-                // Try to get positions to test API connectivity
                 var positions = await _gpsService.GetLatestPositionsAsync("AF");
 
                 return Json(new
@@ -736,7 +797,6 @@ namespace MVS_Project.Controllers
         /// <summary>
         /// Get system health status
         /// </summary>
-        /// <returns>JSON response with system health</returns>
         [HttpGet]
         public async Task<IActionResult> GetSystemHealth()
         {
@@ -768,218 +828,6 @@ namespace MVS_Project.Controllers
             }
         }
 
-        #endregion
-
-
-        #region geocoding Methods and routing the map
-
-        /// <summary>
-        /// Server-side proxy for OpenRouteService geocoding API
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> GeocodeSearch(string query, string country = "AF")
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(query) || query.Length < 3)
-                {
-                    return BadRequest(new { error = "Query must be at least 3 characters long" });
-                }
-
-                // Use API key as query parameter, not in Authorization header
-                var url = $"https://api.openrouteservice.org/geocode/search?api_key={_orsApiKey}&text={Uri.EscapeDataString(query)}&boundary.country={country}";
-
-                using var httpClient = new HttpClient();
-                var response = await httpClient.GetAsync(url);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("Geocoding API returned {StatusCode}: {ReasonPhrase}. Content: {ErrorContent}",
-                        response.StatusCode, response.ReasonPhrase, errorContent);
-                    return StatusCode((int)response.StatusCode, new { error = "Geocoding service unavailable", details = errorContent });
-                }
-
-                var content = await response.Content.ReadAsStringAsync();
-                return Content(content, "application/json");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in geocoding search for query: {Query}", query);
-                return StatusCode(500, new { error = "Internal server error during geocoding", details = ex.Message });
-            }
-        }
-        /// <summary>
-        /// Server-side proxy for OpenRouteService autocomplete API
-        /// </summary>
-        [HttpGet]
-        public async Task<IActionResult> GeocodeAutocomplete(string query, string country = "AF")
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(query) || query.Length < 3)
-                {
-                    return Json(new { features = new object[0] });
-                }
-
-                // Use API key as query parameter, not in Authorization header
-                var url = $"https://api.openrouteservice.org/geocode/autocomplete?api_key={_orsApiKey}&text={Uri.EscapeDataString(query)}&boundary.country={country}";
-
-                using var httpClient = new HttpClient();
-                var response = await httpClient.GetAsync(url);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errorContent = await response.Content.ReadAsStringAsync();
-                    _logger.LogWarning("Autocomplete API returned {StatusCode}: {ReasonPhrase}. Content: {ErrorContent}",
-                        response.StatusCode, response.ReasonPhrase, errorContent);
-                    return Json(new { features = new object[0] });
-                }
-
-                var content = await response.Content.ReadAsStringAsync();
-                return Content(content, "application/json");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in autocomplete for query: {Query}", query);
-                return Json(new { features = new object[0] });
-            }
-        }
-
-        /// <summary>
-        /// Server-side proxy for OpenRouteService directions API
-        /// </summary>
-        /// <summary>
-        /// Server-side proxy for OpenRouteService directions API
-        /// </summary>
-        /// <summary>
-        /// Server-side proxy for OpenRouteService directions API
-        /// </summary>
-        /// <summary>
-        /// Server-side proxy for OpenRouteService directions API
-        /// </summary>
-        /// <summary>
-        /// Server-side proxy for OpenRouteService directions API
-        /// </summary>
-        [HttpPost]
-        public async Task<IActionResult> GetDirections([FromBody] DirectionsRequest request)
-        {
-            try
-            {
-                _logger.LogInformation("GetDirections method called");
-
-                // Validate request
-                if (request == null)
-                {
-                    _logger.LogWarning("Request is null");
-                    return BadRequest(new { error = "Request body is required" });
-                }
-
-                if (request.Coordinates == null || request.Coordinates.Count < 2)
-                {
-                    _logger.LogWarning("Invalid coordinates: {CoordinateCount}", request.Coordinates?.Count ?? 0);
-                    return BadRequest(new { error = "At least 2 coordinates are required" });
-                }
-
-                // Log the incoming request for debugging
-                _logger.LogInformation("GetDirections called with {CoordinateCount} coordinates", request.Coordinates.Count);
-                foreach (var coord in request.Coordinates)
-                {
-                    _logger.LogInformation("Coordinate: [{Lng}, {Lat}]", coord[0], coord[1]);
-                }
-
-                // Validate API key
-                if (string.IsNullOrWhiteSpace(_orsApiKey))
-                {
-                    _logger.LogError("ORS API key is not configured");
-                    return StatusCode(500, new { error = "API key not configured" });
-                }
-
-                // Create request body
-                var requestBody = new
-                {
-                    coordinates = request.Coordinates,
-                    instructions = false,
-                    geometry = true
-                };
-
-                var json = JsonConvert.SerializeObject(requestBody);
-                _logger.LogInformation("Request JSON: {Json}", json);
-
-                // Use HttpClientFactory or create new instance
-                using var httpClient = new HttpClient();
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-
-                // Try using GET request with query parameters like geocoding
-                httpClient.DefaultRequestHeaders.Clear();
-                httpClient.DefaultRequestHeaders.Accept.Clear();
-                httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-                // Build coordinates string for GET request (start and end coordinates)
-                var startCoord = request.Coordinates[0]; // [lng, lat]
-                var endCoord = request.Coordinates[1];   // [lng, lat]
-
-                // Use GET request with coordinates as query parameters
-                var url = $"https://api.openrouteservice.org/v2/directions/driving-car?api_key={_orsApiKey}&start={startCoord[0]},{startCoord[1]}&end={endCoord[0]},{endCoord[1]}&format=geojson";
-
-                _logger.LogInformation("Sending GET request to: {Url}", url);
-                _logger.LogInformation("Start: [{StartLng},{StartLat}], End: [{EndLng},{EndLat}]", startCoord[0], startCoord[1], endCoord[0], endCoord[1]);
-
-                var response = await httpClient.GetAsync(url);
-
-                _logger.LogInformation("Response status: {StatusCode}", response.StatusCode);
-
-                var responseContent = await response.Content.ReadAsStringAsync();
-                _logger.LogInformation("Response content length: {Length}", responseContent?.Length ?? 0);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    _logger.LogError("ORS API error {StatusCode}: {Content}", response.StatusCode, responseContent);
-
-                    return StatusCode((int)response.StatusCode, new
-                    {
-                        error = "Routing service error",
-                        details = responseContent,
-                        statusCode = (int)response.StatusCode,
-                        url = url
-                    });
-                }
-
-                _logger.LogInformation("Successfully received directions response");
-                return Content(responseContent, "application/json");
-            }
-            catch (JsonException jsonEx)
-            {
-                _logger.LogError(jsonEx, "JSON serialization error");
-                return StatusCode(500, new { error = "JSON processing error", details = jsonEx.Message });
-            }
-            catch (HttpRequestException httpEx)
-            {
-                _logger.LogError(httpEx, "HTTP request error");
-                return StatusCode(500, new { error = "Network error", details = httpEx.Message });
-            }
-            catch (TaskCanceledException tcEx)
-            {
-                _logger.LogError(tcEx, "Request timeout");
-                return StatusCode(408, new { error = "Request timeout", details = tcEx.Message });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Unexpected error in GetDirections");
-                return StatusCode(500, new
-                {
-                    error = "Internal server error",
-                    details = ex.Message,
-                    stackTrace = ex.StackTrace
-                });
-            }
-        }
-        #endregion
-
-
-        /// <summary>
-        /// Test endpoint to verify ORS API connectivity
-        /// </summary>
         /// <summary>
         /// Test endpoint to verify ORS API connectivity
         /// </summary>
@@ -995,10 +843,7 @@ namespace MVS_Project.Controllers
                     return BadRequest(new { error = "API key not configured" });
                 }
 
-                // Test with a simple geocoding request first
                 using var httpClient = new HttpClient();
-                // Don't use Authorization header - use query parameter instead
-
                 var testUrl = $"https://api.openrouteservice.org/geocode/search?api_key={_orsApiKey}&text=Kabul&boundary.country=AF";
 
                 _logger.LogInformation("Testing with URL: {Url}", testUrl);
@@ -1007,14 +852,12 @@ namespace MVS_Project.Controllers
                 var content = await response.Content.ReadAsStringAsync();
 
                 _logger.LogInformation("Test response status: {StatusCode}", response.StatusCode);
-                _logger.LogInformation("Test response content: {Content}", content);
 
                 return Ok(new
                 {
                     success = response.IsSuccessStatusCode,
                     statusCode = (int)response.StatusCode,
                     apiKeyConfigured = !string.IsNullOrWhiteSpace(_orsApiKey),
-                    apiKeyPrefix = _orsApiKey?.Substring(0, Math.Min(_orsApiKey.Length, 20)) + "...",
                     testUrl = testUrl,
                     responseContent = content
                 });
@@ -1031,7 +874,6 @@ namespace MVS_Project.Controllers
             }
         }
 
-
-
+        #endregion
     }
 }
