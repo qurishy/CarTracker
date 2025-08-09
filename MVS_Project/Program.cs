@@ -12,7 +12,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
 
 
-builder.Services.AddSignalR(hubOptions => {
+builder.Services.AddSignalR(hubOptions =>
+{
     hubOptions.ClientTimeoutInterval = TimeSpan.FromMinutes(2);
     hubOptions.KeepAliveInterval = TimeSpan.FromSeconds(30);
 });
@@ -113,8 +114,8 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-// Start GPS data service
-var gpsService = app.Services.GetRequiredService<IGpsDataService>();
-await gpsService.StartRealtimeUpdatesAsync();
+    // Start GPS data service
+    var gpsService = app.Services.GetRequiredService<IGpsDataService>();
+    await gpsService.StartRealtimeUpdatesAsync();
 
-app.Run();
+    app.Run();
