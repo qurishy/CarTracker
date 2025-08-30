@@ -613,19 +613,34 @@ namespace MVS_Project.Controllers
         /// Matches frontend: getRoute()
         /// </summary>
         [HttpPost]
+        [Route("Map/GetRoute")]
         public async Task<IActionResult> GetRoute([FromBody] GetRouteRequest request)
         {
+            // Enhanced validation
             if (request == null)
-                return BadRequest(new { error = "Invalid request body" });
-
-            if (request.StartLat == 0 || request.StartLng == 0 ||
-                request.EndLat == 0 || request.EndLng == 0)
             {
-                return BadRequest(new { error = "Valid start and end coordinates required" });
+                _logger.LogWarning("GetRoute called with null request");
+                return BadRequest(new { error = "Request body is required" });
+            }
+
+            // Validate coordinates
+            if (!IsValidCoordinate(request.StartLat, request.StartLng))
+            {
+                _logger.LogWarning("Invalid start coordinates: {StartLat}, {StartLng}", request.StartLat, request.StartLng);
+                return BadRequest(new { error = "Invalid start coordinates" });
+            }
+
+            if (!IsValidCoordinate(request.EndLat, request.EndLng))
+            {
+                _logger.LogWarning("Invalid end coordinates: {EndLat}, {EndLng}", request.EndLat, request.EndLng);
+                return BadRequest(new { error = "Invalid end coordinates" });
             }
 
             try
             {
+                _logger.LogInformation("Calculating route from ({StartLat}, {StartLng}) to ({EndLat}, {EndLng}) for vehicle {VehicleId}",
+                    request.StartLat, request.StartLng, request.EndLat, request.EndLng, request.VehicleId);
+
                 // Build ORS Directions API URL with coordinates
                 var start = $"{request.StartLng},{request.StartLat}"; // ORS expects [lng, lat]
                 var end = $"{request.EndLng},{request.EndLat}";
@@ -634,12 +649,24 @@ namespace MVS_Project.Controllers
 
                 _logger.LogInformation("Calling ORS Directions API: {Url}", url);
 
+                // Use configured HttpClient
                 using var response = await _httpClient.GetAsync(url);
+
                 if (!response.IsSuccessStatusCode)
                 {
                     var error = await response.Content.ReadAsStringAsync();
-                    _logger.LogError("ORS Directions API error {Code}: {Error}", response.StatusCode, error);
-                    return StatusCode((int)response.StatusCode, new { error = "Route calculation failed" });
+                    _logger.LogError("ORS Directions API error {StatusCode}: {Error}", response.StatusCode, error);
+
+                    // Return more specific error messages
+                    var errorMessage = response.StatusCode switch
+                    {
+                        System.Net.HttpStatusCode.Unauthorized => "Invalid API key for routing service",
+                        System.Net.HttpStatusCode.BadRequest => "Invalid route parameters",
+                        System.Net.HttpStatusCode.TooManyRequests => "Rate limit exceeded, please try again later",
+                        _ => "Route calculation service unavailable"
+                    };
+
+                    return StatusCode((int)response.StatusCode, new { error = errorMessage, details = error });
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
@@ -649,14 +676,16 @@ namespace MVS_Project.Controllers
                 var features = orsData["features"] as JArray;
                 if (features == null || !features.Any())
                 {
-                    return NotFound(new { error = "No route data returned from service" });
+                    _logger.LogWarning("No route features returned from ORS API");
+                    return NotFound(new { error = "No route found between the specified points" });
                 }
 
                 var firstFeature = features[0];
                 var geometry = firstFeature["geometry"]?["coordinates"] as JArray;
                 if (geometry == null || geometry.Count == 0)
                 {
-                    return NotFound(new { error = "No route geometry returned" });
+                    _logger.LogWarning("No route geometry returned from ORS API");
+                    return NotFound(new { error = "No route geometry available" });
                 }
 
                 // Extract distance and duration from properties
@@ -676,6 +705,12 @@ namespace MVS_Project.Controllers
                     }
                 }
 
+                if (coordinates.Count == 0)
+                {
+                    _logger.LogWarning("No valid coordinates extracted from route geometry");
+                    return BadRequest(new { error = "Invalid route coordinates format" });
+                }
+
                 // Return format expected by frontend displayRoute()
                 var routeData = new
                 {
@@ -684,8 +719,16 @@ namespace MVS_Project.Controllers
                     duration = Math.Round(duration, 2),
                     geometry = new { coordinates = coordinates }, // Alternative format
                     origin = new { lat = request.StartLat, lng = request.StartLng },
-                    destination = new { lat = request.EndLat, lng = request.EndLng }
+                    destination = new { lat = request.EndLat, lng = request.EndLng },
+                    summary = new
+                    {
+                        distance = Math.Round(distance, 2),
+                        duration = Math.Round(duration, 2)
+                    }
                 };
+
+                _logger.LogInformation("Route calculated successfully: {Distance}km, {Duration}min",
+                    Math.Round(distance, 2), Math.Round(duration, 2));
 
                 return Json(routeData);
             }
@@ -694,11 +737,21 @@ namespace MVS_Project.Controllers
                 _logger.LogError(jex, "Invalid JSON received from ORS API");
                 return StatusCode(502, new { error = "Invalid response from routing service", details = jex.Message });
             }
+            catch (HttpRequestException hex)
+            {
+                _logger.LogError(hex, "HTTP request failed to ORS API");
+                return StatusCode(502, new { error = "Routing service unavailable", details = hex.Message });
+            }
+            catch (TaskCanceledException tex)
+            {
+                _logger.LogError(tex, "Request timeout to ORS API");
+                return StatusCode(504, new { error = "Route calculation timed out", details = "Please try again" });
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error calculating route from ({StartLat}, {StartLng}) to ({EndLat}, {EndLng})",
+                _logger.LogError(ex, "Unexpected error calculating route from ({StartLat}, {StartLng}) to ({EndLat}, {EndLng})",
                     request.StartLat, request.StartLng, request.EndLat, request.EndLng);
-                return StatusCode(500, new { error = "Failed to calculate route", details = ex.Message });
+                return StatusCode(500, new { error = "Internal server error during route calculation", details = ex.Message });
             }
         }
 
@@ -759,6 +812,16 @@ namespace MVS_Project.Controllers
                 .ToListAsync();
         }
 
+
+        /// <summary>
+        /// Helper method to validate coordinates
+        /// </summary>
+        private static bool IsValidCoordinate(double lat, double lng)
+        {
+            return lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 &&
+                   !double.IsNaN(lat) && !double.IsNaN(lng) &&
+                   !double.IsInfinity(lat) && !double.IsInfinity(lng);
+        }
         #endregion
 
         #region Status and Health Checks

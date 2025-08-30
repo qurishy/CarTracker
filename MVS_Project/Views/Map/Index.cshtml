@@ -912,7 +912,8 @@
         }
 
         // Fetch location suggestions for routing
-        async function fetchSuggestions(query, datalistId) {
+        async function fetchSuggestions(query, datalistId) 
+        {
             try {
                 const response = await fetch(`/Map/SearchLocations?query=${encodeURIComponent(query)}`);
                 if (!response.ok) {
@@ -943,12 +944,17 @@
                         datalist.appendChild(option);
                     });
                 }
-            } catch (error) {
+                
+            } 
+            catch (error) {
                 console.error('Error fetching suggestions:', error);
             }
         }
-                        // Updated getRoute function with better debugging and error handling
-                async function getRoute() {
+
+               
+        // Updated getRoute function with better error handling
+               
+        async function getRoute() {
                     const destination = $('#destination').val().trim();
                     if (!destination) {
                         showAlert('warning', 'Please enter a destination');
@@ -967,36 +973,35 @@
                         console.log('Current vehicle position:', lastPosition);
                         console.log('Destination:', destination);
 
+                        // Test endpoint first
+                        try {
+                            const testResponse = await fetch('/Map/TestRouting');
+                            if (testResponse.ok) {
+                                const testData = await testResponse.json();
+                                console.log('Routing test successful:', testData);
+                            }
+                        } catch (e) {
+                            console.warn('Routing test failed:', e.message);
+                        }
+
                         // Geocode destination if needed
                         let destLat, destLng;
                         const option = document.querySelector(`#destinationSuggestions option[value="${destination}"]`);
                         if (option) {
                             destLat = parseFloat(option.getAttribute('data-lat'));
                             destLng = parseFloat(option.getAttribute('data-lon'));
-                            console.log('Using suggestion coordinates:', { destLat, destLng });
                         } else {
-                            console.log('Geocoding destination:', destination);
                             const geoResponse = await fetch(`/Map/Geocode?address=${encodeURIComponent(destination)}`);
-                            console.log('Geocoding response status:', geoResponse.status);
-
                             if (!geoResponse.ok) {
-                                const errorText = await geoResponse.text();
-                                console.error('Geocoding failed:', errorText);
                                 throw new Error(`Geocoding failed: ${geoResponse.status}`);
                             }
-
                             const geoData = await geoResponse.json();
-                            console.log('Geocoding result:', geoData);
-
-                            if (!geoData.lat || !geoData.lon) {
-                                throw new Error('Destination not found');
-                            }
                             destLat = geoData.lat;
                             destLng = geoData.lon;
                         }
 
-                        // Prepare request body
-                        const routeRequestBody = {
+                        // Prepare route request
+                        const routeRequest = {
                             startLat: lastPosition.lat,
                             startLng: lastPosition.lng,
                             endLat: destLat,
@@ -1004,85 +1009,43 @@
                             vehicleId: currentCarId
                         };
 
-                        console.log('Route request body:', routeRequestBody);
+                        console.log('Sending route request:', routeRequest);
 
-                        // Test if the endpoint exists first
-                        console.log('Testing route endpoint accessibility...');
-                        const testResponse = await fetch('/Map/GetRoute', {
+                        // Call route endpoint
+                        const routeResponse = await fetch('/Map/GetRoute', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
-                                'Accept': 'application/json',
-                                'X-Requested-With': 'XMLHttpRequest' // Add this header for AJAX identification
+                                'Accept': 'application/json'
                             },
-                            body: JSON.stringify(routeRequestBody)
+                            body: JSON.stringify(routeRequest)
                         });
 
-                        console.log('Route response status:', testResponse.status);
-                        console.log('Route response headers:', Object.fromEntries(testResponse.headers.entries()));
+                        console.log('Route response status:', routeResponse.status);
 
-                        if (testResponse.status === 404) {
-                            // Try alternative route endpoints
-                            console.log('Primary route failed, trying alternative endpoints...');
+                        if (!routeResponse.ok) {
+                            const errorText = await routeResponse.text();
+                            console.error('Route request failed:', errorText);
 
-                            const alternatives = [
-                                '/Map/GetRoute',
-                                '/api/Map/GetRoute',
-                                '/Map/Route',
-                                '/api/Route'
-                            ];
-
-                            for (const altUrl of alternatives) {
-                                try {
-                                    console.log(`Trying alternative endpoint: ${altUrl}`);
-                                    const altResponse = await fetch(altUrl, {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'Accept': 'application/json'
-                                        },
-                                        body: JSON.stringify(routeRequestBody)
-                                    });
-
-                                    if (altResponse.ok) {
-                                        const routeData = await altResponse.json();
-                                        console.log('Route data from alternative endpoint:', routeData);
-                                        displayRoute(routeData, destLat, destLng, destination);
-                                        return;
-                                    }
-                                } catch (e) {
-                                    console.log(`Alternative ${altUrl} failed:`, e.message);
-                                }
-                            }
-
-                            throw new Error('Route endpoint not found - check controller routing configuration');
-                        }
-
-                        if (!testResponse.ok) {
-                            const errorText = await testResponse.text();
-                            console.error('Route calculation failed:', errorText);
-
+                            let errorMessage;
                             try {
                                 const errorData = JSON.parse(errorText);
-                                throw new Error(errorData.error || errorData.message || `HTTP ${testResponse.status}`);
+                                errorMessage = errorData.error || errorData.message || `HTTP ${routeResponse.status}`;
                             } catch {
-                                throw new Error(`HTTP ${testResponse.status} - ${errorText}`);
+                                errorMessage = `HTTP ${routeResponse.status} - ${errorText}`;
                             }
+
+                            throw new Error(errorMessage);
                         }
 
-                        const routeData = await testResponse.json();
+                        const routeData = await routeResponse.json();
                         console.log('Route data received:', routeData);
-
-                        if (!routeData.coordinates || routeData.coordinates.length === 0) {
-                            throw new Error('No route coordinates returned');
-                        }
 
                         displayRoute(routeData, destLat, destLng, destination);
                         showAlert('success', 'Route calculated successfully');
 
                     } catch (error) {
-                        console.error('Route error:', error);
-                        console.error('Error stack:', error.stack);
+                        console.error('Route calculation error:', error);
                         showAlert('danger', `Route calculation failed: ${error.message}`);
                     } finally {
                         $('#findRouteBtn').prop('disabled', false).html('<i class="fas fa-route me-1"></i>Find Route');

@@ -206,7 +206,7 @@ namespace MVS_Project.Services
                     {
                         // Remove Id assignment here
                         LicensePlate = $"AF-{position.CarId:D4}",
-                        Make = "Unknown",
+                        Make = "BNW",
                         Model = "Unknown",
                         LastTracked = position.Timestamp
                     };
@@ -262,7 +262,7 @@ namespace MVS_Project.Services
                         {
                             // No Id assignment
                             LicensePlate = $"AF-{position.CarId:D4}",
-                            Make = "Unknown",
+                            Make = "BMW",
                             Model = "Unknown",
                             LastTracked = position.Timestamp
                         };
