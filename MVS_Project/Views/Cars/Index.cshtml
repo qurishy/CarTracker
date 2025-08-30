@@ -141,6 +141,10 @@
                 background: linear-gradient(135deg, #157347, #0dcaf0);
             }
 
+            .btn-route.active {
+                background: linear-gradient(135deg, #dc3545, #e83e8c);
+            }
+
         .connection-status {
             position: fixed;
             top: 20px;
@@ -234,7 +238,6 @@
 
         }
 
-        /* Custom route animation */
         .animated-route {
             animation: dash 30s linear infinite;
         }
@@ -246,6 +249,30 @@
             stroke-dashoffset: 1000;
         }
 
+        }
+
+        .route-controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .route-info {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 10px;
+            padding: 15px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            min-width: 250px;
+            display: none;
         }
     </style>
 </head>
@@ -264,6 +291,19 @@
                     <div class="spinner-border text-primary" role="status">
                         <span class="visually-hidden">Loading...</span>
                     </div>
+                </div>
+
+                <!-- Route Controls -->
+                <div class="route-controls" style="display: none;">
+                    <button class="btn btn-sm btn-danger" onclick="clearCurrentRoute()">
+                        <i class="fas fa-times me-1"></i>Clear Route
+                    </button>
+                </div>
+
+                <!-- Route Information -->
+                <div class="route-info" id="routeInfo">
+                    <h6><i class="fas fa-route me-2"></i>Route Information</h6>
+                    <div id="routeDetails"></div>
                 </div>
 
                 <!-- Left Panel - Cars List -->
@@ -349,6 +389,8 @@
         let markers = {};
         let routes = {};
         let activeRoute = null;
+        let activeCarId = null;
+        let routeLayer = null;
         let cars = [];
         let connection;
 
@@ -565,7 +607,7 @@
                                     ${formatTime(car.lastTracked)}
                                 </small>
                                 <div class="btn-group btn-group-sm">
-                                    <button class="btn btn-route" onclick="event.stopPropagation(); showCarRoute(${car.id})" title="Show Route">
+                                    <button class="btn btn-route" id="routeBtn-${car.id}" onclick="event.stopPropagation(); toggleCarRoute(${car.id})" title="Show/Hide Route">
                                         <i class="fas fa-route"></i>
                                     </button>
                                     <button class="btn btn-track" onclick="event.stopPropagation(); showCarDetails(${car.id})" title="View Details">
@@ -630,7 +672,7 @@
                         <button class="btn btn-sm btn-primary me-1" onclick="showCarDetails(${car.id})">
                             <i class="fas fa-info me-1"></i>Details
                         </button>
-                        <button class="btn btn-sm btn-success" onclick="showCarRoute(${car.id})">
+                        <button class="btn btn-sm btn-success" onclick="toggleCarRoute(${car.id})">
                             <i class="fas fa-route me-1"></i>Route
                         </button>
                     </div>
@@ -641,6 +683,232 @@
             marker.on('click', () => selectCar(car.id));
 
             markers[car.id] = marker;
+        }
+
+        // Toggle car route (main functionality requested)
+        async function toggleCarRoute(carId) {
+            try {
+                const routeBtn = document.getElementById(`routeBtn-${carId}`);
+
+                // If this car's route is already active, hide it
+                if (activeCarId === carId && routeLayer) {
+                    clearCurrentRoute();
+                    return;
+                }
+
+                // Clear any existing route
+                clearCurrentRoute();
+
+                // Show loading state
+                if (routeBtn) {
+                    routeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    routeBtn.disabled = true;
+                }
+
+                showLoading(true);
+                console.log(`Fetching route for car ${carId}...`);
+
+                // Get car's location history to create route
+                const response = await fetch(`/Map/GetCarLocations?vehicleId=${carId}`);
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch locations: ${response.statusText}`);
+                }
+
+                const locations = await response.json();
+
+                if (!locations || locations.length < 2) {
+                    throw new Error('Not enough location data to show route');
+                }
+
+                // Display the route
+                displayCarRoute(locations, carId);
+
+                // Update active car and button states
+                activeCarId = carId;
+                updateRouteButtonStates(carId);
+
+                showNotification(`Route displayed for vehicle #${carId}`, 'success');
+
+            } catch (error) {
+                console.error('Error loading car route:', error);
+                showNotification(`Failed to load route: ${error.message}`, 'danger');
+
+                // Reset button state
+                const routeBtn = document.getElementById(`routeBtn-${carId}`);
+                if (routeBtn) {
+                    routeBtn.innerHTML = '<i class="fas fa-route"></i>';
+                    routeBtn.disabled = false;
+                    routeBtn.classList.remove('active');
+                }
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Display car route on map
+        function displayCarRoute(locations, carId) {
+            if (!locations || locations.length < 2) {
+                showNotification('Not enough location data to display route', 'warning');
+                return;
+            }
+
+            // Create route points from locations
+            const routePoints = locations.map(loc => [loc.latitude, loc.longitude]);
+
+            // Create route polyline with animation
+            routeLayer = L.polyline(routePoints, {
+                color: '#667eea',
+                weight: 4,
+                opacity: 0.8,
+                dashArray: '10, 5',
+                className: 'animated-route'
+            }).addTo(map);
+
+            // Add start marker (oldest location)
+            const startIcon = L.divIcon({
+                className: 'route-marker',
+                html: '<div style="background: #28a745; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><i class="fas fa-play" style="font-size: 10px;"></i></div>',
+                iconSize: [25, 25],
+                iconAnchor: [12.5, 12.5]
+            });
+
+            const startMarker = L.marker(routePoints[routePoints.length - 1], { icon: startIcon })
+                .addTo(map)
+                .bindPopup(`<strong>Route Start</strong><br>${new Date(locations[locations.length - 1].timestamp).toLocaleString()}`);
+
+            // Add end marker (newest location - current position)
+            const endIcon = L.divIcon({
+                className: 'route-marker',
+                html: '<div style="background: #dc3545; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><i class="fas fa-map-marker-alt" style="font-size: 10px;"></i></div>',
+                iconSize: [25, 25],
+                iconAnchor: [12.5, 12.5]
+            });
+
+            const endMarker = L.marker(routePoints[0], { icon: endIcon })
+                .addTo(map)
+                .bindPopup(`<strong>Current Position</strong><br>${new Date(locations[0].timestamp).toLocaleString()}`);
+
+            // Store markers in route layer for easy removal
+            routeLayer.startMarker = startMarker;
+            routeLayer.endMarker = endMarker;
+
+            // Fit map to route bounds
+            map.fitBounds(routeLayer.getBounds(), { padding: [50, 50] });
+
+            // Show route controls and info
+            showRouteControls();
+            showRouteInfo(locations, carId);
+
+            // Highlight the car
+            selectCar(carId);
+        }
+
+        // Clear current route
+        function clearCurrentRoute() {
+            if (routeLayer) {
+                map.removeLayer(routeLayer);
+                if (routeLayer.startMarker) {
+                    map.removeLayer(routeLayer.startMarker);
+                }
+                if (routeLayer.endMarker) {
+                    map.removeLayer(routeLayer.endMarker);
+                }
+                routeLayer = null;
+            }
+
+            // Hide route controls and info
+            hideRouteControls();
+            hideRouteInfo();
+
+            // Reset all route button states
+            updateRouteButtonStates(null);
+            activeCarId = null;
+        }
+
+        // Update route button states
+        function updateRouteButtonStates(activeCarId) {
+            // Reset all buttons
+            const allRouteButtons = document.querySelectorAll('.btn-route');
+            allRouteButtons.forEach(btn => {
+                btn.classList.remove('active');
+                btn.innerHTML = '<i class="fas fa-route"></i>';
+                btn.disabled = false;
+            });
+
+            // Activate the current car's button
+            if (activeCarId) {
+                const activeButton = document.getElementById(`routeBtn-${activeCarId}`);
+                if (activeButton) {
+                    activeButton.classList.add('active');
+                    activeButton.innerHTML = '<i class="fas fa-eye-slash"></i>';
+                }
+            }
+        }
+
+        // Show route controls
+        function showRouteControls() {
+            const controls = document.querySelector('.route-controls');
+            if (controls) {
+                controls.style.display = 'block';
+            }
+        }
+
+        // Hide route controls
+        function hideRouteControls() {
+            const controls = document.querySelector('.route-controls');
+            if (controls) {
+                controls.style.display = 'none';
+            }
+        }
+
+        // Show route information
+        function showRouteInfo(locations, carId) {
+            const routeInfo = document.getElementById('routeInfo');
+            const car = cars.find(c => c.id === carId);
+
+            if (!routeInfo || !car) return;
+
+            const startTime = new Date(locations[locations.length - 1].timestamp);
+            const endTime = new Date(locations[0].timestamp);
+            const duration = Math.round((endTime - startTime) / (1000 * 60)); // minutes
+
+            const routeDetails = `
+                <div class="mb-2">
+                    <strong>${car.make} ${car.model}</strong><br>
+                    <small class="text-muted">${car.licensePlate}</small>
+                </div>
+                <div class="row g-2 text-center">
+                    <div class="col-6">
+                        <div class="border rounded p-2">
+                            <i class="fas fa-map-signs text-primary"></i><br>
+                            <small class="text-muted">Points</small><br>
+                            <strong>${locations.length}</strong>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="border rounded p-2">
+                            <i class="fas fa-clock text-success"></i><br>
+                            <small class="text-muted">Duration</small><br>
+                            <strong>${duration}m</strong>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-2 small text-muted">
+                    <div><i class="fas fa-play text-success me-1"></i>Started: ${startTime.toLocaleString()}</div>
+                    <div><i class="fas fa-stop text-danger me-1"></i>Current: ${endTime.toLocaleString()}</div>
+                </div>
+            `;
+
+            document.getElementById('routeDetails').innerHTML = routeDetails;
+            routeInfo.style.display = 'block';
+        }
+
+        // Hide route information
+        function hideRouteInfo() {
+            const routeInfo = document.getElementById('routeInfo');
+            if (routeInfo) {
+                routeInfo.style.display = 'none';
+            }
         }
 
         // Update car position from SignalR
@@ -828,8 +1096,8 @@
                         <div class="mt-4">
                             <h5><i class="fas fa-chart-line me-2"></i>Quick Actions</h5>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-primary" onclick="showCarRoute(${car.id}); bootstrap.Modal.getInstance(document.getElementById('carDetailsModal')).hide();">
-                                    <i class="fas fa-route me-1"></i>View Routes
+                                <button class="btn btn-primary" onclick="toggleCarRoute(${car.id}); bootstrap.Modal.getInstance(document.getElementById('carDetailsModal')).hide();">
+                                    <i class="fas fa-route me-1"></i>Toggle Route
                                 </button>
                                 <button class="btn btn-success" onclick="centerOnCar(${car.id})">
                                     <i class="fas fa-crosshairs me-1"></i>Center on Map
@@ -846,126 +1114,24 @@
             document.getElementById('carDetailsContent').innerHTML = html;
         }
 
-        // Show car route
-        async function showCarRoute(carId) {
-            try {
-                showLoading(true);
-                console.log(`Fetching route for car ${carId}...`);
-
-                // Clear existing route
-                if (activeRoute) {
-                    map.removeLayer(activeRoute);
-                    activeRoute = null;
-                }
-
-                // Simulate route data since endpoint doesn't exist
-                const routeData = {
-                    id: 1,
-                    name: "Main Delivery Route",
-                    waypoints: [
-                        { id: 1, latitude: 34.51, longitude: 69.15, order: 1, estimatedArrival: new Date().toISOString() },
-                        { id: 2, latitude: 34.52, longitude: 69.16, order: 2, estimatedArrival: new Date(Date.now() + 600000).toISOString() },
-                        { id: 3, latitude: 34.53, longitude: 69.17, order: 3, estimatedArrival: new Date(Date.now() + 1200000).toISOString() },
-                        { id: 4, latitude: 34.54, longitude: 69.18, order: 4, estimatedArrival: new Date(Date.now() + 1800000).toISOString() }
-                    ]
-                };
-
-                displayCarRoute(routeData, carId);
-                showNotification(`Route displayed for vehicle #${carId}`, 'success');
-
-            } catch (error) {
-                console.error('Error loading car route:', error);
-                showNotification('Failed to load route', 'danger');
-            } finally {
-                showLoading(false);
-            }
-        }
-
-        // Display car route on map
-        function displayCarRoute(route, carId) {
-            if (!route.waypoints || route.waypoints.length < 2) {
-                showNotification('Route has insufficient waypoints', 'warning');
-                return;
-            }
-
-            // Create route points from waypoints
-            const routePoints = route.waypoints.map(wp => [wp.latitude, wp.longitude]);
-
-            // Create route polyline
-            activeRoute = L.polyline(routePoints, {
-                color: '#667eea',
-                weight: 5,
-                opacity: 0.8,
-                dashArray: '10, 10',
-                className: 'animated-route'
-            }).addTo(map);
-
-            // Add start marker
-            const startIcon = L.divIcon({
-                className: 'route-marker',
-                html: '<div style="background: #28a745; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><i class="fas fa-play" style="font-size: 12px;"></i></div>',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-            });
-
-            L.marker(routePoints[0], { icon: startIcon })
-                .addTo(map)
-                .bindPopup(`<strong>Start Point</strong><br>${route.name}`);
-
-            // Add end marker
-            const endIcon = L.divIcon({
-                className: 'route-marker',
-                html: '<div style="background: #dc3545; color: white; border-radius: 50%; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.3);"><i class="fas fa-flag-checkered" style="font-size: 12px;"></i></div>',
-                iconSize: [30, 30],
-                iconAnchor: [15, 15]
-            });
-
-            L.marker(routePoints[routePoints.length - 1], { icon: endIcon })
-                .addTo(map)
-                .bindPopup(`<strong>Destination</strong><br>${route.name}`);
-
-            // Add waypoint markers
-            route.waypoints.forEach((waypoint, index) => {
-                if (index > 0 && index < route.waypoints.length - 1) {
-                    const waypointIcon = L.divIcon({
-                        className: 'waypoint-marker',
-                        html: `<div style="background: #ffc107; color: #333; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.2); font-weight: bold; font-size: 12px;">${index}</div>`,
-                        iconSize: [25, 25],
-                        iconAnchor: [12.5, 12.5]
-                    });
-
-                    L.marker([waypoint.latitude, waypoint.longitude], { icon: waypointIcon })
-                        .addTo(map)
-                        .bindPopup(`<strong>Waypoint ${index}</strong><br>Order: ${waypoint.order}<br>ETA: ${waypoint.estimatedArrival ? new Date(waypoint.estimatedArrival).toLocaleString() : 'N/A'}`);
-                }
-            });
-
-            // Fit map to route bounds
-            map.fitBounds(activeRoute.getBounds(), { padding: [50, 50] });
-
-            // Highlight the car
-            selectCar(carId);
-        }
-
         // Load car history
         async function loadCarHistory(carId) {
             try {
                 showLoading(true);
                 console.log(`Loading history for car ${carId}...`);
 
-                // Simulate history data since endpoint doesn't exist
-                const history = [
-                    { id: 1, carId: carId, latitude: 34.51, longitude: 69.15, timestamp: new Date(Date.now() - 3600000).toISOString() },
-                    { id: 2, carId: carId, latitude: 34.515, longitude: 69.155, timestamp: new Date(Date.now() - 3000000).toISOString() },
-                    { id: 3, carId: carId, latitude: 34.52, longitude: 69.16, timestamp: new Date(Date.now() - 2400000).toISOString() },
-                    { id: 4, carId: carId, latitude: 34.525, longitude: 69.165, timestamp: new Date(Date.now() - 1800000).toISOString() },
-                    { id: 5, carId: carId, latitude: 34.53, longitude: 69.17, timestamp: new Date(Date.now() - 1200000).toISOString() },
-                    { id: 6, carId: carId, latitude: 34.535, longitude: 69.175, timestamp: new Date(Date.now() - 600000).toISOString() },
-                    { id: 7, carId: carId, latitude: 34.54, longitude: 69.18, timestamp: new Date().toISOString() }
-                ];
+                const response = await fetch(`/Map/GetCarHistory?id=${carId}&take=50`);
+                if (!response.ok) throw new Error('Failed to fetch car history');
 
-                displayCarHistory(history, carId);
-                showNotification(`Loaded ${history.length} location points`, 'success');
+                const result = await response.json();
+                const history = result.data || result;
+
+                if (history && history.length > 0) {
+                    displayCarRoute(history, carId);
+                    showNotification(`Loaded ${history.length} location points`, 'success');
+                } else {
+                    showNotification('No history data available', 'warning');
+                }
 
             } catch (error) {
                 console.error('Error loading car history:', error);
@@ -973,59 +1139,6 @@
             } finally {
                 showLoading(false);
             }
-        }
-
-        // Display car history on map
-        function displayCarHistory(history, carId) {
-            // Clear existing route
-            if (activeRoute) {
-                map.removeLayer(activeRoute);
-                activeRoute = null;
-            }
-
-            // Create path from history
-            const pathPoints = history.map(h => [h.latitude, h.longitude]);
-
-            // Create history path
-            activeRoute = L.polyline(pathPoints, {
-                color: '#764ba2',
-                weight: 3,
-                opacity: 0.7,
-                className: 'history-path'
-            }).addTo(map);
-
-            // Add markers for significant points
-            if (pathPoints.length > 0) {
-                // Start point
-                const startIcon = L.divIcon({
-                    className: 'history-marker',
-                    html: '<div style="background: #28a745; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.2);"><i class="fas fa-play" style="font-size: 10px;"></i></div>',
-                    iconSize: [25, 25],
-                    iconAnchor: [12.5, 12.5]
-                });
-
-                L.marker(pathPoints[0], { icon: startIcon })
-                    .addTo(map)
-                    .bindPopup(`<strong>Journey Start</strong><br>${new Date(history[0].timestamp).toLocaleString()}`);
-
-                // End point (current location)
-                const endIcon = L.divIcon({
-                    className: 'history-marker',
-                    html: '<div style="background: #dc3545; color: white; border-radius: 50%; width: 25px; height: 25px; display: flex; align-items: center; justify-content: center; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.2);"><i class="fas fa-map-marker-alt" style="font-size: 10px;"></i></div>',
-                    iconSize: [25, 25],
-                    iconAnchor: [12.5, 12.5]
-                });
-
-                L.marker(pathPoints[pathPoints.length - 1], { icon: endIcon })
-                    .addTo(map)
-                    .bindPopup(`<strong>Current Location</strong><br>${new Date(history[history.length - 1].timestamp).toLocaleString()}`);
-            }
-
-            // Fit map to history bounds
-            map.fitBounds(activeRoute.getBounds(), { padding: [50, 50] });
-
-            // Highlight the car
-            selectCar(carId);
         }
 
         // Center map on car
@@ -1061,14 +1174,11 @@
                     refreshCars();
                 }
                 if (e.key === 'Escape') {
-                    // Clear selections
+                    // Clear selections and routes
                     document.querySelectorAll('.car-item').forEach(item => {
                         item.classList.remove('active');
                     });
-                    if (activeRoute) {
-                        map.removeLayer(activeRoute);
-                        activeRoute = null;
-                    }
+                    clearCurrentRoute();
                 }
             });
         }
